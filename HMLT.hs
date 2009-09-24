@@ -8,11 +8,18 @@ module Main where
   -- some basic aliases and helper data types
   type Point = Vector3
   type Direction = Vector3
+  showVector3 v = "<"++(show (v3x v))++", "++(show (v3y v))++", "++(show (v3z v))++">"
   type Path = [Point]
   data Ray = Ray {
       origin::Point,
       direction::Direction
-    } deriving (Show,Eq)
+    } deriving (Eq)
+  instance Show Ray where
+    show (Ray o d) = "Ray starting at "++(showVector3 o)++" going in Direction "++(showVector3 d)
+
+  fromTwoPoints :: Point -> Point -> Ray
+  fromTwoPoints v w = Ray v (normalize (w-v))
+
   type Interval = (Double,Double)
 
   -- some utility functions
@@ -39,11 +46,7 @@ module Main where
       radius :: Double
     } deriving (Eq)
   instance Show Sphere where
-    show (Sphere c r) = "Sphere at "++pos++" with Radius "++(show r)
-        where pos = "<"++(show (v3x c))++", "
-                       ++(show (v3y c))++", "
-                       ++(show (v3z c))++">"
-    
+    show (Sphere c r) = "Sphere at " ++ (showVector3 c) ++ " with Radius " ++ (show r)
 
   -- Sphere implements the Confineable type class
   instance Confineable Sphere where
@@ -68,14 +71,21 @@ module Main where
   
   -- Material contains local absorption and scattering properties
   data Material = Material {
-      absorption::Double,
-      scattering::Double
+      materialAbsorption::Double,
+      materialScattering::Double
     } deriving (Show)
+  materialExtinction (Material kappa sigma) = kappa + sigma
+  addMaterials (Material kappa1 sigma1) (Material kappa2 sigma2) = Material (kappa1+kappa2) (sigma1+sigma2)
   
   -- a Texture contains the spatial dependency of 'a'
   data Texture a = Homogenous a | Inhomogenous (Point->a)
+  isHomogenous (Homogenous _) = True
+  isHomogenous _ = False
+  addHomogenousMaterials (Homogenous m1) (Homogenous m2) = Homogenous (addMaterials m1 m2)
+  addInhomogenousMaterials (Inhomogenous f1) (Inhomogenous f2) = Inhomogenous (\p -> addMaterials (f1 p) (f2 p))
+  
   instance (Show a) => Show (Texture a) where
-    show (Homogenous a) = "Homogenous " ++ (show a) ++ ")"
+    show (Homogenous a) = "Homogenous " ++ (show a)
     show (Inhomogenous _) = "Inhomogenous "
 
   -- an Entity is a container filled with light-influencing material
@@ -100,16 +110,16 @@ module Main where
       sceneEntities::[Entity]
     }
 
-  testEntities = let sph1 = Sphere (Vector3 0 0 3) 2
+  testEntities = let sph1 = Sphere (Vector3 0 0 1) 2
                      sph2 = Sphere (Vector3 1 1 4) 3
                      cont1 = SphereContainer sph1
                      cont2 = SphereContainer sph2
-                     mat1 = Material 2.0 3.0
-                     mat2 = Material 0.0 1.0
+                     mat1 = Material 2.0 1.0
+                     mat2 = Material 3.0 4.0
                      tex1 = Homogenous mat1
                      tex2 = Homogenous mat2
                      ent1 = Entity cont1 [tex1]
-                     ent2 = Entity cont2 [tex1,tex2]
+                     ent2 = Entity cont2 [tex2]
                  in [ent1,ent2]
   testRay = Ray (Vector3 1 1 0) $ normalize (Vector3 0 0 1)
 
@@ -163,16 +173,73 @@ module Main where
       ((3.0,4.0),Set.fromList [1,2,3,4,5,6]),((4.0,5.0),Set.fromList [1,2,3,4,6]),
       ((5.0,6.0),Set.fromList [2,3])        ,((6.0,7.0),Set.fromList [2])
     ]
-    
-  -- [entityContainer entity `intersectedBy` testRay | entity<-testEntities]
   
+  -- combines possibly differently textured materials into one
+  boilDownMaterials :: [Texture Material] -> Texture Material
+  boilDownMaterials textures =
+    let (homtexts,inhomtexts) = List.partition isHomogenous textures
+        nohomtexts   = null homtexts
+        noinhomtexts = null inhomtexts
+    in if noinhomtexts
+        then if nohomtexts
+               then Homogenous (Material 0 0)
+               else foldl1 addHomogenousMaterials homtexts
+        else if nohomtexts
+               then foldl1 addInhomogenousMaterials inhomtexts
+               else let (Homogenous hommat) = foldl1 addHomogenousMaterials homtexts
+                        combinedinhomtexts  = foldl1 addInhomogenousMaterials inhomtexts
+                    in addInhomogenousMaterials (Inhomogenous (const hommat)) combinedinhomtexts
+
+  disjunctIntervalsWithCondensedTextures :: [Entity] -> Ray -> [(Interval,Texture Material)]
+  disjunctIntervalsWithCondensedTextures entities ray = let
+      intervals = [entityContainer entity `intersectedBy` ray | entity<-entities]
+      entityindices = [(0::Int)..(length entities -1)]
+      nestedindexedintervals = zip intervals entityindices
+      indexedintervals = concat [map (\x -> (x, snd ii)) (fst ii) | ii<-nestedindexedintervals]
+      taggeddisjointintervals = cutOverlaps.concat $ map (uncurry fromInterval) indexedintervals
+      disjointintervals = fst $ unzip taggeddisjointintervals
+      entitytexturelists = map entityTextures entities
+      intervaltextureindices = map ((Set.toList).snd) taggeddisjointintervals
+      intervaltextures = [concat $ map (entitytexturelists!!) textureindices | textureindices<-intervaltextureindices]
+      condensedintervaltextures = map boilDownMaterials intervaltextures
+      refinedintervalswithtextures = zip disjointintervals condensedintervaltextures
+    in refinedintervalswithtextures
+  
+  -- sort out intervals that are before the ray starts or further away than maxDist
+  -- and clip intervals that span across these bounds
+  clipAndFilterTexturedIntervals :: Double -> [(Interval,Texture Material)] -> [(Interval,Texture Material)]
+  clipAndFilterTexturedIntervals maxDist texturedintervals = let
+      maxDist' = max 0 maxDist
+      outsideOfInterest = (uncurry (\x y -> x>=maxDist' || y<=0)).fst
+      filterIntervals = filter (not.outsideOfInterest)
+      clipInterval (x,y) = (max 0 x, min maxDist' y)
+      clipIntervals = map (uncurry (\x y -> (clipInterval x, y)))
+    in filterIntervals . clipIntervals $ texturedintervals
+
+  data ProbeResult = MaxDepthAtDistance Double | MaxDistAtDepth Double deriving (Show)
+  consumeIntervals :: Ray -> Double -> Double -> [(Interval,Texture Material)] -> ProbeResult
+  consumeIntervals ray maxDepth accumulatedDepth [] = MaxDistAtDepth accumulatedDepth
+  consumeIntervals ray maxDepth accumulatedDepth (((a,b),  Homogenous  m):rest) = let
+      remainingDepth = maxDepth - accumulatedDepth
+      intervalLength = b - a
+      extinction = materialExtinction m
+      intervalDepth = extinction * intervalLength
+    in if remainingDepth > intervalDepth
+         then consumeIntervals ray maxDepth (accumulatedDepth + intervalDepth) rest
+         else let neededDist = remainingDepth / extinction
+              in MaxDepthAtDistance (a+neededDist)
+
+  consumeIntervals ray maxDepth accumulatedDepth (((a,b),Inhomogenous mf):rest) = undefined
+
+    
   -- casts a Ray through a list of entities until either a maximum optical depth
   -- or a maximum distance is reached
-  data ProbeResult = MaxDepthAtDistance Double | MaxDistAtDepth Double deriving (Show)
-  probeEntitiesWithRay :: [Entity] -> Double -> Double -> Ray -> ProbeResult
-  probeEntitiesWithRay entities maxDist maxDepth ray = undefined
-
-
+  probeEntitiesWithRay :: [Entity] -> Ray -> Double -> Double -> ProbeResult
+  probeEntitiesWithRay entities ray maxDist maxDepth = let
+      refinedintervalswithtextures = disjunctIntervalsWithCondensedTextures entities ray
+      clippedintervals = clipAndFilterTexturedIntervals maxDist refinedintervalswithtextures
+    in consumeIntervals ray maxDepth 0 clippedintervals
   
+
   
   main = putStrLn "Hello World!"
