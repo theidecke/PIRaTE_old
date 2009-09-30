@@ -69,6 +69,7 @@ module Main where
   -- Sphere implements the Confineable type class
   instance Confineable Sphere where
     contains (Sphere c r) p = normsq (p - c) <= r*r
+    {-# INLINE contains #-}
 
     intersectedBy (Sphere center radius) (Ray origin direction) = 
       let offset = origin - center
@@ -93,14 +94,19 @@ module Main where
       materialScattering::Double
     } deriving (Show)
   materialExtinction (Material kappa sigma) = kappa + sigma
+  {-# INLINE materialExtinction #-}
   addMaterials (Material kappa1 sigma1) (Material kappa2 sigma2) = Material (kappa1+kappa2) (sigma1+sigma2)
+  {-# INLINE addMaterials #-}
   
   -- a Texture contains the spatial dependency of 'a'
   data Texture a = Homogenous a | Inhomogenous (Point->a)
   isHomogenous (Homogenous _) = True
   isHomogenous _ = False
+  {-# INLINE isHomogenous #-}
   addHomogenousMaterials (Homogenous m1) (Homogenous m2) = Homogenous (addMaterials m1 m2)
+  {-# INLINE addHomogenousMaterials #-}
   addInhomogenousMaterials (Inhomogenous f1) (Inhomogenous f2) = Inhomogenous (\p -> addMaterials (f1 p) (f2 p))
+  {-# INLINE addInhomogenousMaterials #-}
   
   instance (Show a) => Show (Texture a) where
     show (Homogenous a) = "Homogenous " ++ (show a)
@@ -140,14 +146,17 @@ module Main where
   -- we use the equality just in terms of position (for Ord)
   instance Eq (IntervalLimiter a) where
     (==) (IntervalLimiter _ _ pos1) (IntervalLimiter _ _ pos2) = pos1==pos2
+    {-# INLINE (==) #-}
   -- we order IntervalLimiters by position
   instance Ord (IntervalLimiter a) where
     (<=) (IntervalLimiter _ _ pos1) (IntervalLimiter _ _ pos2) = pos1<=pos2
+    {-# INLINE (<=) #-}
     
   
   fromInterval :: Interval -> a -> [IntervalLimiter a]
   fromInterval (start,end) key = [IntervalLimiter key  True start,
                                   IntervalLimiter key False   end]
+  {-# INLINE fromInterval #-}
                                   
   -- transforms a list of tagged intervals possibly overlapping and with coinciding
   -- endpoints into a list of disjoint intervals with taglist
@@ -194,6 +203,7 @@ module Main where
                else let (Homogenous hommat) = foldl1 addHomogenousMaterials homtexts
                         combinedinhomtexts  = foldl1 addInhomogenousMaterials inhomtexts
                     in addInhomogenousMaterials (Inhomogenous (const hommat)) combinedinhomtexts
+  {-# INLINE boilDownMaterials #-}
 
   disjunctIntervalsWithCondensedTextures :: [Entity] -> Ray -> [(Interval,Texture Material)]
   disjunctIntervalsWithCondensedTextures entities ray = let
@@ -202,13 +212,15 @@ module Main where
       nestedindexedintervals = zip intervals entityindices
       indexedintervals = concat [map (\x -> (x, snd ii)) (fst ii) | ii<-nestedindexedintervals]
       taggeddisjointintervals = cutOverlaps.concat $ map (uncurry fromInterval) indexedintervals
-      disjointintervals = fst $ unzip taggeddisjointintervals
       entitytexturelists = map entityTextures entities
       intervaltextureindices = map ((Set.toList).snd) taggeddisjointintervals
       intervaltextures = [concat $ map (entitytexturelists!!) textureindices | textureindices<-intervaltextureindices]
       condensedintervaltextures = map boilDownMaterials intervaltextures
+      disjointintervals = fst $ unzip taggeddisjointintervals
       refinedintervalswithtextures = zip disjointintervals condensedintervaltextures
     in refinedintervalswithtextures
+  --{-# INLINE disjunctIntervalsWithCondensedTextures #-}
+  
   
   -- sort out intervals that are before the ray starts or further away than maxDist
   -- and clip intervals that span across these bounds
@@ -223,6 +235,7 @@ module Main where
 
   data ProbeResult = MaxDepthAtDistance Double | MaxDistAtDepth Double deriving (Show)
   getProbeResultDepth (MaxDistAtDepth depth) = depth
+  {-# INLINE getProbeResultDepth #-}
   
   consumeIntervals :: Ray -> Double -> Double -> [(Interval,Texture Material)] -> ProbeResult
   consumeIntervals ray maxDepth accumulatedDepth [] = MaxDistAtDepth accumulatedDepth
@@ -350,6 +363,20 @@ module Main where
         futureresults <- nMLTStepsAndExtract (n-1) extractor scene mutations newpath g
         return $ ((extractor initialstate):futureresults)
 
+  mltAction n pl = do
+    g <- create
+    rndpath <- randomPathOfLength pl g
+    nMLTStepsAndExtract n
+                        ((\v -> (v3x v, v3y v)).last)
+                        testScene
+                        [ExponentialNodeTranslation 0.15,
+                         ExponentialNodeTranslation 0.08,
+                         ExponentialImageNodeTranslation 0.10,
+                         ExponentialImageNodeTranslation 0.04,
+                         PathLengthMutation 0.1]
+                        rndpath
+                        g
+
   -- the standard (possibly wasteful) way to compute the acceptance probability
   -- f x should return the probability density for state x
   -- t x y should return the transition probability from state x to state y
@@ -408,21 +435,6 @@ module Main where
           return oldstate
 
 
-  randomtestaction n pl = do
-    g <- create
-    rndpath <- randomPathOfLength pl g
-    nMLTStepsAndExtract n
-                        ((\v -> (v3x v, v3y v)).last.finalizePath)
-                        testScene
-                        [ExponentialNodeTranslation 0.12,
-                         ExponentialNodeTranslation 0.08,
-                         ExponentialImageNodeTranslation 0.05,
-                         ExponentialImageNodeTranslation 0.02,
-                         PathLengthMutation 0.1]
-                        rndpath
-                        g
-
-
   acceptanceProbabilityOf :: Mutation -> Scene -> MLTState -> MLTState -> Double
   acceptanceProbabilityOf (ExponentialNodeTranslation l) scene oldpath newpath =
     defautAcceptanceProbability (measurementContribution scene) (\_ _ -> 1) oldpath newpath
@@ -468,8 +480,9 @@ module Main where
               then 0
               else let completepath = finalizePath path
                        edges = edgeFunction (\v w -> w - v) completepath
-                       sigma = 1.0
-                       geometricfactors = product $ map ((4*pi/sigma*).normsq) (init edges)
+                       sigma = 5.0
+                       scatterfactor = 4*pi/sigma
+                       geometricfactors = product $ map ((scatterfactor*).normsq) (init edges)
                        opticaldist = sum $ edgeFunction raySphereIntersectionLength completepath
                        opticaldepth = sigma * opticaldist
                    in (exp (-opticaldepth))/geometricfactors
@@ -519,4 +532,4 @@ module Main where
     
   main = do
     [n] <- getArgs
-    putStrLn.showSamplesForMathematica $ runST $ randomtestaction ((read n)::Int) 1
+    putStrLn.showSamplesForMathematica $ runST $ mltAction ((read n)::Int) 1
