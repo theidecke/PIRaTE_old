@@ -1,4 +1,4 @@
-{-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE BangPatterns #-}
 
 module Main where
 
@@ -8,6 +8,8 @@ module Main where
   import qualified Data.Set as Set
   import Control.Monad
   import Control.Monad.ST
+  --import qualified Control.Monad.ST.Lazy as Lazy (ST)
+  --import GHC.ST		( ST(..), runST )
   import Statistics.RandomVariate
   import Statistics.Distribution
   import Statistics.Distribution.Exponential
@@ -68,10 +70,10 @@ module Main where
 
   -- Sphere implements the Confineable type class
   instance Confineable Sphere where
-    contains (Sphere c r) p = normsq (p - c) <= r*r
+    contains !(Sphere c r) !p = normsq (p - c) <= r*r
     {-# INLINE contains #-}
 
-    intersectedBy (Sphere center radius) (Ray origin direction) = 
+    intersectedBy !(Sphere center radius) !(Ray origin direction) = 
       let offset = origin - center
           oo = offset `vdot` offset
           od = offset `vdot` direction
@@ -89,24 +91,59 @@ module Main where
           
   
   -- Material contains local absorption and scattering properties
-  data Material = Material {
-      materialAbsorption::Double,
-      materialScattering::Double
-    } deriving (Show)
+  data Material = Material Double Double deriving (Show)
+  materialAbsorption (Material kappa     _) = kappa
+  {-# INLINE materialAbsorption #-}
+  materialScattering (Material     _ sigma) = sigma
+  {-# INLINE materialScattering #-}
   materialExtinction (Material kappa sigma) = kappa + sigma
   {-# INLINE materialExtinction #-}
   addMaterials (Material kappa1 sigma1) (Material kappa2 sigma2) = Material (kappa1+kappa2) (sigma1+sigma2)
   {-# INLINE addMaterials #-}
   
   -- a Texture contains the spatial dependency of 'a'
-  data Texture a = Homogenous a | Inhomogenous (Point->a)
+  data Texture a = Homogenous a
+                 | Inhomogenous (Point->a)
+
   isHomogenous (Homogenous _) = True
   isHomogenous _ = False
   {-# INLINE isHomogenous #-}
+  
   addHomogenousMaterials (Homogenous m1) (Homogenous m2) = Homogenous (addMaterials m1 m2)
   {-# INLINE addHomogenousMaterials #-}
+  
   addInhomogenousMaterials (Inhomogenous f1) (Inhomogenous f2) = Inhomogenous (\p -> addMaterials (f1 p) (f2 p))
   {-# INLINE addInhomogenousMaterials #-}
+  
+  -- evaluates a texture of type a at a specific point
+  evaluatedAt :: Texture a -> Point -> a
+  evaluatedAt   (Homogenous m) _ = m
+  evaluatedAt (Inhomogenous f) p = f p
+  {-# INLINE evaluatedAt #-}
+  
+  -- combines possibly differently textured materials into one
+  boilDownMaterials :: [Texture Material] -> Texture Material
+  boilDownMaterials !textures =
+    let (homtexts,inhomtexts) = List.partition isHomogenous textures
+        nohomtexts   = null homtexts
+        noinhomtexts = null inhomtexts
+    in if noinhomtexts
+        then if nohomtexts
+               then Homogenous (Material 0 0)
+               else foldl1 addHomogenousMaterials homtexts
+        else if nohomtexts
+               then foldl1 addInhomogenousMaterials inhomtexts
+               else let (Homogenous hommat) = foldl1 addHomogenousMaterials homtexts
+                        combinedinhomtexts  = foldl1 addInhomogenousMaterials inhomtexts
+                    in addInhomogenousMaterials (Inhomogenous (const hommat)) combinedinhomtexts
+  --{-# INLINE boilDownMaterials #-}
+  
+  summedMaterialsAt :: [Entity] -> Point -> Material
+  summedMaterialsAt entities point = boiledTexture `evaluatedAt` point
+    where
+      relevantEntities = filter ((`contains` point).entityContainer) entities
+      boiledTexture = boilDownMaterials.concat $ map entityTextures relevantEntities
+  {-# INLINE summedMaterialsAt #-}
   
   instance (Show a) => Show (Texture a) where
     show (Homogenous a) = "Homogenous " ++ (show a)
@@ -187,23 +224,7 @@ module Main where
       ((3.0,4.0),Set.fromList [1,2,3,4,5,6]),((4.0,5.0),Set.fromList [1,2,3,4,6]),
       ((5.0,6.0),Set.fromList [2,3])        ,((6.0,7.0),Set.fromList [2])
     ]
-  
-  -- combines possibly differently textured materials into one
-  boilDownMaterials :: [Texture Material] -> Texture Material
-  boilDownMaterials textures =
-    let (homtexts,inhomtexts) = List.partition isHomogenous textures
-        nohomtexts   = null homtexts
-        noinhomtexts = null inhomtexts
-    in if noinhomtexts
-        then if nohomtexts
-               then Homogenous (Material 0 0)
-               else foldl1 addHomogenousMaterials homtexts
-        else if nohomtexts
-               then foldl1 addInhomogenousMaterials inhomtexts
-               else let (Homogenous hommat) = foldl1 addHomogenousMaterials homtexts
-                        combinedinhomtexts  = foldl1 addInhomogenousMaterials inhomtexts
-                    in addInhomogenousMaterials (Inhomogenous (const hommat)) combinedinhomtexts
-  {-# INLINE boilDownMaterials #-}
+
 
   disjunctIntervalsWithCondensedTextures :: [Entity] -> Ray -> [(Interval,Texture Material)]
   disjunctIntervalsWithCondensedTextures entities ray = let
@@ -212,15 +233,14 @@ module Main where
       nestedindexedintervals = zip intervals entityindices
       indexedintervals = concat [map (\x -> (x, snd ii)) (fst ii) | ii<-nestedindexedintervals]
       taggeddisjointintervals = cutOverlaps.concat $ map (uncurry fromInterval) indexedintervals
-      entitytexturelists = map entityTextures entities
       intervaltextureindices = map ((Set.toList).snd) taggeddisjointintervals
+      entitytexturelists = map entityTextures entities
       intervaltextures = [concat $ map (entitytexturelists!!) textureindices | textureindices<-intervaltextureindices]
       condensedintervaltextures = map boilDownMaterials intervaltextures
       disjointintervals = fst $ unzip taggeddisjointintervals
       refinedintervalswithtextures = zip disjointintervals condensedintervaltextures
     in refinedintervalswithtextures
   --{-# INLINE disjunctIntervalsWithCondensedTextures #-}
-  
   
   -- sort out intervals that are before the ray starts or further away than maxDist
   -- and clip intervals that span across these bounds
@@ -251,7 +271,6 @@ module Main where
 
   consumeIntervals ray maxDepth accumulatedDepth (((a,b),Inhomogenous mf):rest) = undefined
 
-    
   -- casts a Ray through a list of entities until either a maximum optical depth
   -- or a maximum distance is reached
   probeEntitiesWithRay :: [Entity] -> Ray -> Double -> Double -> ProbeResult
@@ -260,6 +279,12 @@ module Main where
       clippedintervals = clipAndFilterTexturedIntervals maxDist refinedintervalswithtextures
     in consumeIntervals ray maxDepth 0 clippedintervals
   
+  opticalDepthBetween entities v w = let
+      infinity = 1/(0::Double)
+      distance = vmag $ w - v
+      ray = Ray v ((1/distance)*<>(w-v))
+    in getProbeResultDepth $ probeEntitiesWithRay entities ray distance infinity
+
   
   --
   -- random-dependent stuff starts here!
@@ -277,7 +302,7 @@ module Main where
         let rnddbl = u1::Double
             ad = fromIntegral a
             bd = fromIntegral b
-        return $ a + (truncate $ (bd-ad+1)*rnddbl)
+        return $! a + (truncate $ (bd-ad+1)*rnddbl)
 
   randomListIndex :: [a] -> Gen s -> ST s Int
   randomListIndex [] g = error "cannot choose an elementindex in an empty list"
@@ -296,7 +321,7 @@ module Main where
   -- generates a d-distributed sample
   distributionSample d g = do
     u1 <- uniform g
-    return $ quantile d (u1::Double)
+    return $! quantile d (u1::Double)
 
   -- generates a random direction vector with length one
   randomDirection :: Gen s -> ST s Direction
@@ -306,13 +331,13 @@ module Main where
     let z = 2*(u1::Double) - 1
         phi = 2*pi*(u2::Double)
         rho = sqrt (1 - z*z)
-    return $ Vector3 (rho * (cos phi)) (rho * (sin phi)) z
+    return $! Vector3 (rho * (cos phi)) (rho * (sin phi)) z
 
   randomExponential3D :: Double -> Gen s -> ST s Point
   randomExponential3D lambda g = do
     rdir <- randomDirection g
     rexp <- distributionSample (fromLambda (1/lambda)) g
-    return $ rexp *<> rdir
+    return $! rexp *<> rdir
     
   randomPointInUnitSphere :: Gen s -> ST s Point
   randomPointInUnitSphere g = do
@@ -324,7 +349,7 @@ module Main where
         z = 2*(u3::Double)-1
         v = Vector3 x y z
     if normsq v <= 1
-      then return v
+      then return $! v
       else randomPointInUnitSphere g
     
   randomPathOfLength n g = do
@@ -354,28 +379,29 @@ module Main where
                 then return newstate
                 else return oldstate
 
-  nMLTStepsAndExtract :: Int -> (MLTState -> a) -> Scene -> [Mutation] -> MLTState -> Gen s -> ST s [a]
-  nMLTStepsAndExtract n extractor scene mutations initialstate g = do
+  nMLTStepsAndExtract :: (MLTState -> a) -> Int -> Scene -> [Mutation] -> MLTState -> Gen s -> ST s [a]
+  nMLTStepsAndExtract extractor n scene mutations initialstate g = do
     if n<=0
       then return []
       else do
         newpath <- metropolisStep scene mutations initialstate g
-        futureresults <- nMLTStepsAndExtract (n-1) extractor scene mutations newpath g
+        futureresults <- nMLTStepsAndExtract extractor (n-1) scene mutations newpath g
         return $ ((extractor initialstate):futureresults)
 
   mltAction n pl = do
     g <- create
     rndpath <- randomPathOfLength pl g
-    nMLTStepsAndExtract n
-                        ((\v -> (v3x v, v3y v)).last)
-                        testScene
+    nMLTStepsAndExtract ((\v -> (v3x v, v3y v)).last)
+                        n
+                        testScene--standardScene
                         [ExponentialNodeTranslation 0.15,
                          ExponentialNodeTranslation 0.08,
                          ExponentialImageNodeTranslation 0.10,
                          ExponentialImageNodeTranslation 0.04,
                          PathLengthMutation 0.1]
-                        rndpath
+                        [Vector3 0.5 0 0]--rndpath
                         g
+
 
   -- the standard (possibly wasteful) way to compute the acceptance probability
   -- f x should return the probability density for state x
@@ -394,9 +420,9 @@ module Main where
     mutateWith :: a -> Path -> Gen s -> ST s Path
   --}
   
-  data Mutation = ExponentialNodeTranslation Double |
-                  ExponentialImageNodeTranslation Double |
-                  PathLengthMutation Double
+  data Mutation = ExponentialNodeTranslation Double
+                | ExponentialImageNodeTranslation Double
+                | PathLengthMutation Double
 
 
   mutateWith :: Mutation -> Scene -> MLTState -> Gen s -> ST s MLTState
@@ -436,12 +462,12 @@ module Main where
 
 
   acceptanceProbabilityOf :: Mutation -> Scene -> MLTState -> MLTState -> Double
-  acceptanceProbabilityOf (ExponentialNodeTranslation l) scene oldpath newpath =
-    defautAcceptanceProbability (measurementContribution scene) (\_ _ -> 1) oldpath newpath
-  acceptanceProbabilityOf (ExponentialImageNodeTranslation l) scene oldpath newpath =
-    defautAcceptanceProbability (measurementContribution scene) (\_ _ -> 1) oldpath newpath
-  acceptanceProbabilityOf (PathLengthMutation l) scene oldpath newpath =
-    defautAcceptanceProbability (measurementContribution scene) (pathLengthMutationTransitionProbability l) oldpath newpath
+  acceptanceProbabilityOf (ExponentialNodeTranslation l) scene oldstate newstate =
+    defautAcceptanceProbability (measurementContribution scene) (\_ _ -> 1) oldstate newstate
+  acceptanceProbabilityOf (ExponentialImageNodeTranslation l) scene oldstate newstate =
+    defautAcceptanceProbability (measurementContribution scene) (\_ _ -> 1) oldstate newstate
+  acceptanceProbabilityOf (PathLengthMutation l) scene oldstate newstate =
+    defautAcceptanceProbability (measurementContribution scene) (pathLengthMutationTransitionProbability l) oldstate newstate
 
   pathLengthMutationTransitionProbability :: Double -> MLTState -> MLTState -> Double
   pathLengthMutationTransitionProbability lambda oldpath newpath =
@@ -473,14 +499,35 @@ module Main where
   finalizePath :: Path -> Path
   finalizePath = addSensorNode . addLightSourceNode
   
-  measurementContribution scene path = if null path
+  standardScene = let
+      container = SphereContainer $ Sphere (Vector3 0 0 0) 1
+      sigma = 10
+      material = Material 0 sigma
+      texture = Homogenous material
+      entities = [Entity container [texture]]
+    in Scene [] entities
+
+  measurementContribution (Scene lightsources entities) path = if null path
+    then 0
+    else let scattercrosssections = map (materialScattering.(entities `summedMaterialsAt`)) path
+         in if any (==0) scattercrosssections
+              then 0
+              else let scatterfactor = product $ map (*(1/(4*pi))) scattercrosssections
+                       completepath = finalizePath path
+                       opticaldepth = sum $ edgeFunction (opticalDepthBetween entities) completepath
+                       edges = edgeFunction (-) completepath
+                       geometricfactors = product $ map normsq (init edges)
+                   in scatterfactor*(exp (-opticaldepth))/geometricfactors
+                       
+                     
+  oldMeasurementContribution scene path = if null path
     then 0
     else let outsidenodeq = any (\p -> normsq p > 1) path
          in if outsidenodeq
               then 0
               else let completepath = finalizePath path
                        edges = edgeFunction (\v w -> w - v) completepath
-                       sigma = 5.0
+                       sigma = 10
                        scatterfactor = 4*pi/sigma
                        geometricfactors = product $ map ((scatterfactor*).normsq) (init edges)
                        opticaldist = sum $ edgeFunction raySphereIntersectionLength completepath
@@ -493,21 +540,22 @@ module Main where
   edgeFunction f (a:b:rest) = (f a b):(edgeFunction f (b:rest))
   
   raySphereIntersectionLength v w = let
-      distance = vmag $ w - v
-      ray = fromTwoPoints v w
       container = SphereContainer $ Sphere (Vector3 0 0 0) 1
       material = Material 0 1
       texture = Homogenous material
       entities = [Entity container [texture]]
-      depth = probeEntitiesWithRay entities ray distance (1/(0::Double))
+      infinity = 1/(0::Double)
+      distance = vmag $ w - v
+      ray = fromTwoPoints v w
+      depth = probeEntitiesWithRay entities ray distance infinity
     in getProbeResultDepth depth
     
   -- test-stuff
-  testEntities = let sph1 = Sphere (Vector3 0 0 1) 2
-                     sph2 = Sphere (Vector3 0 0 4) 2
+  testEntities = let sph1 = Sphere (Vector3 0.5 0 0) 0.5
+                     sph2 = Sphere (Vector3 (-0.5) 0 0) 0.5
                      cont1 = SphereContainer sph1
                      cont2 = SphereContainer sph2
-                     mat1 = Material 5.0 0.0
+                     mat1 = Material 3.0 4.0
                      mat2 = Material 0.0 7.0
                      tex1 = Homogenous mat1
                      tex2 = Homogenous mat2
@@ -518,12 +566,14 @@ module Main where
   testScene = Scene [] testEntities
   testpath1 = [Vector3 0.000124201 (-0.0123588) 0.00415517]
   testpath2 = [Vector3 0.000124201 (-0.0123588) 0.00415517, Vector3 (-0.160068) (-0.499073) (-0.511448)]
-  testacceptanceratio = [measurementContribution testScene testpath1,
-                         measurementContribution testScene testpath2,
+  testacceptanceratio = [measurementContribution standardScene testpath1,
+                         measurementContribution standardScene testpath2,
                          pathLengthMutationTransitionProbability 0.1 testpath1 testpath2,
                          pathLengthMutationTransitionProbability 0.1 testpath2 testpath1
                          ]
-  infinity = 1/(0::Double)
+  --testacceptanceratio == [14.474861791724885,7.953182840852547,5.968310365946075e-2,0.25]
+  
+  
   
   showSample (x,y) = printf "{%f,%f}" x y
   showSamplesForMathematica :: [(Double,Double)] -> String
@@ -533,3 +583,10 @@ module Main where
   main = do
     [n] <- getArgs
     putStrLn.showSamplesForMathematica $ runST $ mltAction ((read n)::Int) 1
+    --putStrLn.showSample.head $ runST $ mltAction ((read n)::Int) 1
+    
+  --main = putStrLn "Hi there!"
+    
+  -- ghc -O2 -fexcess-precision -optc-ffast-math -optc-O3 -funfolding-use-threshold=16 --make HMLT.hs
+  -- ghc -O2 -fexcess-precision -optc-ffast-math -optc-O3 -funfolding-use-threshold=16 --make HMLT.hs -prof -auto-all -caf-all -fforce-recomp
+  
