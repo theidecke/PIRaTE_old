@@ -13,7 +13,7 @@ module Main where
   import Statistics.RandomVariate
   import Statistics.Distribution
   import Statistics.Distribution.Exponential
-  import Data.Array.Vector.UArr
+  import Data.Array.Vector
   import System.Environment
   import Text.Printf
 
@@ -53,11 +53,13 @@ module Main where
   instance Confineable Container where
     contains      (SphereContainer s) = contains s
     intersectedBy (SphereContainer s) = intersectedBy s
+    randomPointIn (SphereContainer s) = randomPointIn s
   
   -- Containers should be able to do the following:
   class Confineable a where
     contains      :: a -> Point -> Bool
     intersectedBy :: a -> Ray -> [Interval]
+    randomPointIn :: a -> Gen s -> ST s Point
     
     
   -- Sphere
@@ -87,6 +89,10 @@ module Main where
                    alphas = (alpha0 - alphaDelta,
                              alpha0 + alphaDelta)
                in [alphas]
+               
+    randomPointIn !(Sphere center radius) g = do
+      unitpoint <- randomPointInUnitSphere g
+      return $ center + radius *<> unitpoint
                    
           
   
@@ -351,9 +357,16 @@ module Main where
     if normsq v <= 1
       then return $! v
       else randomPointInUnitSphere g
-    
-  randomPathOfLength n g = do
-    replicateM n $ randomPointInUnitSphere g
+  
+  randomPointInEntities entities g = do
+    entity <- randomChoice entities g
+    let container = entityContainer entity
+    point <- randomPointIn container g
+    return point
+  
+  randomPathOfLength scene n g = do
+    let entities = sceneEntities scene
+    replicateM n $ randomPointInEntities entities g
   
   randomDirections n g = do
     replicateM n $ randomDirection g
@@ -388,18 +401,20 @@ module Main where
         futureresults <- nMLTStepsAndExtract extractor (n-1) scene mutations newpath g
         return $ ((extractor initialstate):futureresults)
 
-  mltAction n pl = do
-    g <- create
-    rndpath <- randomPathOfLength pl g
+  mltAction :: Scene -> Int -> Int -> Int -> ST s [(Double,Double)]
+  mltAction scene seed n pl = do
+    --g <- create
+    g <- initialize $ singletonU $ fromIntegral seed
+    rndpath <- randomPathOfLength scene pl g
     nMLTStepsAndExtract ((\v -> (v3x v, v3y v)).last)
                         n
-                        testScene--standardScene
+                        scene
                         [ExponentialNodeTranslation 0.15,
                          ExponentialNodeTranslation 0.08,
                          ExponentialImageNodeTranslation 0.10,
                          ExponentialImageNodeTranslation 0.04,
                          PathLengthMutation 0.1]
-                        [Vector3 0.5 0 0]--rndpath
+                        rndpath
                         g
 
 
@@ -514,41 +529,15 @@ module Main where
               then 0
               else let scatterfactor = product $ map (*(1/(4*pi))) scattercrosssections
                        completepath = finalizePath path
-                       opticaldepth = sum $ edgeFunction (opticalDepthBetween entities) completepath
-                       edges = edgeFunction (-) completepath
+                       opticaldepth = sum $ edgeMap (opticalDepthBetween entities) completepath
+                       edges = edgeMap (-) completepath
                        geometricfactors = product $ map normsq (init edges)
                    in scatterfactor*(exp (-opticaldepth))/geometricfactors
                        
-                     
-  oldMeasurementContribution scene path = if null path
-    then 0
-    else let outsidenodeq = any (\p -> normsq p > 1) path
-         in if outsidenodeq
-              then 0
-              else let completepath = finalizePath path
-                       edges = edgeFunction (\v w -> w - v) completepath
-                       sigma = 10
-                       scatterfactor = 4*pi/sigma
-                       geometricfactors = product $ map ((scatterfactor*).normsq) (init edges)
-                       opticaldist = sum $ edgeFunction raySphereIntersectionLength completepath
-                       opticaldepth = sigma * opticaldist
-                   in (exp (-opticaldepth))/geometricfactors
-                       
   
-  edgeFunction :: (a->a->b) -> [a] -> [b]
-  edgeFunction f     (a:[]) = []
-  edgeFunction f (a:b:rest) = (f a b):(edgeFunction f (b:rest))
-  
-  raySphereIntersectionLength v w = let
-      container = SphereContainer $ Sphere (Vector3 0 0 0) 1
-      material = Material 0 1
-      texture = Homogenous material
-      entities = [Entity container [texture]]
-      infinity = 1/(0::Double)
-      distance = vmag $ w - v
-      ray = fromTwoPoints v w
-      depth = probeEntitiesWithRay entities ray distance infinity
-    in getProbeResultDepth depth
+  edgeMap :: (a->a->b) -> [a] -> [b]
+  edgeMap f     (a:[]) = []
+  edgeMap f (a:b:rest) = (f a b):(edgeMap f (b:rest))
     
   -- test-stuff
   testEntities = let sph1 = Sphere (Vector3 0.5 0 0) 0.5
@@ -581,9 +570,11 @@ module Main where
 
     
   main = do
-    [n] <- getArgs
-    putStrLn.showSamplesForMathematica $ runST $ mltAction ((read n)::Int) 1
-    --putStrLn.showSample.head $ runST $ mltAction ((read n)::Int) 1
+    [n,chunksize] <- map read `fmap` getArgs
+    let chunks = n `div` chunksize
+        samples = concat [runST $ mltAction testScene seed chunksize 1 | seed <- [1..chunks]]
+    putStrLn.showSamplesForMathematica $ samples
+
     
   --main = putStrLn "Hi there!"
     
