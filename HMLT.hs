@@ -392,31 +392,41 @@ module Main where
                 then return newstate
                 else return oldstate
 
-  nMLTStepsAndExtract :: (MLTState -> a) -> Int -> Scene -> [Mutation] -> MLTState -> Gen s -> ST s [a]
-  nMLTStepsAndExtract extractor n scene mutations initialstate g = do
+  nMLTSteps :: Scene -> [Mutation] -> Int -> MLTState -> Gen s -> ST s [MLTState]
+  nMLTSteps scene mutations n initialstate g = do
     if n<=0
-      then return []
+      then return [initialstate]
       else do
         newpath <- metropolisStep scene mutations initialstate g
-        futureresults <- nMLTStepsAndExtract extractor (n-1) scene mutations newpath g
-        return $ ((extractor initialstate):futureresults)
+        futureresults <- nMLTSteps scene mutations (n-1) newpath g
+        return $ (initialstate:futureresults)
 
-  mltAction :: Scene -> Int -> Int -> Int -> ST s [(Double,Double)]
-  mltAction scene seed n pl = do
-    --g <- create
-    g <- initialize $ singletonU $ fromIntegral seed
-    rndpath <- randomPathOfLength scene pl g
-    nMLTStepsAndExtract ((\v -> (v3x v, v3y v)).last)
+  mltActionStep :: Scene -> [Mutation] -> (MLTState -> a) -> Int -> (Seed,MLTState) -> ((Seed,MLTState),[a])
+  mltActionStep scene mutations extractor n (seed,initialpath) = runST $ do
+    g <- restore seed
+    states <- nMLTSteps scene
+                        mutations
                         n
-                        scene
-                        [ExponentialNodeTranslation 0.15,
-                         ExponentialNodeTranslation 0.08,
-                         ExponentialImageNodeTranslation 0.10,
-                         ExponentialImageNodeTranslation 0.04,
-                         PathLengthMutation 0.1]
-                        rndpath
+                        initialpath
                         g
-
+    g' <- save g
+    return ((g',last states), map extractor states)
+  
+  mltAction :: Scene -> [Mutation] -> (MLTState -> a) -> Int -> Int -> Int -> [a]
+  mltAction scene mutations extractor seedint n chunksize =
+    let ipl = 1 -- initial path length
+        (seed,initialpath) = runST $ do
+                               g <- initialize $ singletonU $ fromIntegral seedint
+                               ip <- randomPathOfLength scene ipl g
+                               s <- save g
+                               return (s,ip)
+        chunks = n `div` chunksize
+        step k (s,ip)
+          | k==0      = []
+          | otherwise = let ((s',p'),chunk) = mltActionStep scene mutations extractor chunksize (s,ip)
+                        in chunk ++ (step (k-1) (s',p'))
+    in step chunks (seed,initialpath)
+    
 
   -- the standard (possibly wasteful) way to compute the acceptance probability
   -- f x should return the probability density for state x
@@ -568,11 +578,22 @@ module Main where
   showSamplesForMathematica :: [(Double,Double)] -> String
   showSamplesForMathematica samples = "testsamples={" ++ (concat $ List.intersperse ",\n" $ map showSample samples) ++ "};"
 
-    
+  {--  
   main = do
     [n,chunksize] <- map read `fmap` getArgs
     let chunks = n `div` chunksize
         samples = concat [runST $ mltAction testScene seed chunksize 1 | seed <- [1..chunks]]
+    putStrLn.showSamplesForMathematica $ samples
+  --}
+  main = do
+    [n,chunksize] <- map read `fmap` getArgs
+    let mutations = [ExponentialNodeTranslation 0.15,
+                     ExponentialNodeTranslation 0.08,
+                     ExponentialImageNodeTranslation 0.10,
+                     ExponentialImageNodeTranslation 0.04,
+                     PathLengthMutation 0.1]
+        extractor = ((\v -> (v3x v, v3y v)).last)
+        samples = mltAction testScene mutations extractor 1 n chunksize
     putStrLn.showSamplesForMathematica $ samples
 
     
