@@ -574,8 +574,19 @@ module Main where
   showSamplesForMathematica :: [(Double,Double)] -> String
   showSamplesForMathematica samples = "testsamples={" ++ (concat $ List.intersperse ",\n" $ map showSample samples) ++ "};"
 
+  showListForMathematica showelement list = "{" ++ (concat $ List.intersperse "," $ map showelement list) ++ "}\n"
+  showGrid2DForMathematica = showListForMathematica (showListForMathematica show)
+  
+  binSamples samples n = let
+      h = 2.0 / (fromIntegral n)
+      grid1d = map (\i -> h*(fromIntegral i) -1) [0..n]
+      cells1d = edgeMap (,) grid1d
+      cells2d = [[(xcell,ycell) | xcell <- cells1d] | ycell <- reverse cells1d]
+      cell2filter ((xmin,xmax),(ymin,ymax)) = filter (\(x,y) -> x>=xmin && x<=xmax && y>=ymin && y<=ymax) samples
+    in map (map (length.cell2filter)) cells2d
+  
   main = do
-    [n,chunksize] <- map read `fmap` getArgs
+    [gridsize,n] <- map read `fmap` getArgs
     let mutations = [ExponentialNodeTranslation 0.15,
                      ExponentialNodeTranslation 0.08,
                      ExponentialImageNodeTranslation 0.10,
@@ -583,8 +594,11 @@ module Main where
                      PathLengthMutation 0.1]
         extractor = ((\v -> (v3x v, v3y v)).last)
         --extractor = (subtract 1).length.finalizePath
-        samples = mltAction testScene mutations extractor 1 n chunksize
-    putStrLn.showSamplesForMathematica $ samples
+        chunksize = min 2500 n
+        samples = mltAction standardScene mutations extractor 98183 n chunksize
+        photonbincounts = binSamples samples gridsize
+    putStrLn $ "binnedphotons=" ++ (init (showGrid2DForMathematica photonbincounts)) ++ ";\n"
+    --putStrLn.showSamplesForMathematica $ samples
     --putStrLn.show $ samples
 
     
