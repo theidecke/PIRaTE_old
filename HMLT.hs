@@ -323,6 +323,20 @@ module Main where
     rndindex <- randomListIndex choices g
     return $ choices!!rndindex
     
+  randomWeightedChoice :: [(Double,a)] -> Gen s -> ST s a
+  randomWeightedChoice weightedchoices g = do
+    let (weights,_) = unzip weightedchoices
+        totalweight = sum weights
+        step ((     _,choice):[])  _ = choice
+        step ((weight,choice):wcs) remainingweight
+          | remainingweight > weight = step wcs (remainingweight-weight)
+          | otherwise = choice
+    u1 <- uniform g
+    let randomweight = totalweight*(u1::Double)
+    return $ step weightedchoices randomweight
+
+  randomWeightedChoices weightedchoices n g = do
+    replicateM n $ randomWeightedChoice weightedchoices g
 
   -- generates a d-distributed sample
   distributionSample d g = do
@@ -380,9 +394,9 @@ module Main where
 -- metropolis stuff
 --
 
-  metropolisStep :: Scene -> [Mutation] -> MLTState -> Gen s -> ST s MLTState
+  metropolisStep :: Scene -> [(Double,Mutation)] -> MLTState -> Gen s -> ST s MLTState
   metropolisStep scene mutations oldstate g = do
-    mutation <- randomChoice mutations g
+    mutation <- randomWeightedChoice mutations g
     newstate <- mutateWith mutation scene oldstate g
     let accprob = acceptanceProbabilityOf mutation scene oldstate newstate
     if accprob==0
@@ -392,7 +406,7 @@ module Main where
                 then return newstate
                 else return oldstate
 
-  nMLTSteps :: Scene -> [Mutation] -> Int -> MLTState -> Gen s -> ST s [MLTState]
+  nMLTSteps :: Scene -> [(Double,Mutation)] -> Int -> MLTState -> Gen s -> ST s [MLTState]
   nMLTSteps scene mutations n initialstate g
     | n==1      = return [initialstate]
     | otherwise = do
@@ -400,7 +414,7 @@ module Main where
         futureresults <- nMLTSteps scene mutations (n-1) newpath g
         return (initialstate:futureresults)
 
-  mltActionStep :: Scene -> [Mutation] -> (MLTState -> a) -> Int -> (Seed,MLTState) -> ((Seed,MLTState),[a])
+  mltActionStep :: Scene -> [(Double,Mutation)] -> (MLTState -> a) -> Int -> (Seed,MLTState) -> ((Seed,MLTState),[a])
   mltActionStep scene mutations extractor n (seed,initialpath) = runST $ do
     g <- restore seed
     states <- nMLTSteps scene
@@ -411,7 +425,7 @@ module Main where
     g' <- save g
     return ((g',last states), map extractor states)
   
-  mltAction :: Scene -> [Mutation] -> (MLTState -> a) -> Int -> Int -> Int -> [a]
+  mltAction :: Scene -> [(Double,Mutation)] -> (MLTState -> a) -> Int -> Int -> Int -> [a]
   mltAction scene mutations extractor seedint n chunksize =
     let ipl = 1 -- initial path length
         (seed,initialpath) = runST $ do
@@ -573,7 +587,7 @@ module Main where
   showSample (x,y) = printf "{%f,%f}" x y
   showSamplesForMathematica :: [(Double,Double)] -> String
   showSamplesForMathematica samples = "testsamples={" ++ (concat $ List.intersperse ",\n" $ map showSample samples) ++ "};"
-
+  
   showListForMathematica showelement list = "{" ++ (concat $ List.intersperse "," $ map showelement list) ++ "}\n"
   showGrid2DForMathematica = showListForMathematica (showListForMathematica show)
   
@@ -585,20 +599,23 @@ module Main where
       cell2filter ((xmin,xmax),(ymin,ymax)) = filter (\(x,y) -> x>=xmin && x<=xmax && y>=ymin && y<=ymax) samples
     in map (map (length.cell2filter)) cells2d
   
+  putBinnedPhotonCounts gridsize samples = do
+    let photonbincounts = binSamples samples gridsize
+    putStrLn $ "binnedphotons=" ++ (init (showGrid2DForMathematica photonbincounts)) ++ ";\n"
+  
+  putPhotonList = putStrLn.showSamplesForMathematica
+    
   main = do
     [gridsize,n] <- map read `fmap` getArgs
-    let mutations = [ExponentialNodeTranslation 0.15,
-                     ExponentialNodeTranslation 0.08,
-                     ExponentialImageNodeTranslation 0.10,
-                     ExponentialImageNodeTranslation 0.04,
-                     PathLengthMutation 0.1]
+    let mutations = [(3,ExponentialNodeTranslation 0.1),
+                     (4,ExponentialImageNodeTranslation 0.3),
+                     (3,PathLengthMutation 0.1)]
         extractor = ((\v -> (v3x v, v3y v)).last)
         --extractor = (subtract 1).length.finalizePath
         chunksize = min 2500 n
         samples = mltAction standardScene mutations extractor 98183 n chunksize
-        photonbincounts = binSamples samples gridsize
-    putStrLn $ "binnedphotons=" ++ (init (showGrid2DForMathematica photonbincounts)) ++ ";\n"
-    --putStrLn.showSamplesForMathematica $ samples
+    putBinnedPhotonCounts gridsize samples
+    --putPhotonList samples
     --putStrLn.show $ samples
 
     
