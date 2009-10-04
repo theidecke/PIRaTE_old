@@ -393,13 +393,12 @@ module Main where
                 else return oldstate
 
   nMLTSteps :: Scene -> [Mutation] -> Int -> MLTState -> Gen s -> ST s [MLTState]
-  nMLTSteps scene mutations n initialstate g = do
-    if n<=0
-      then return [initialstate]
-      else do
+  nMLTSteps scene mutations n initialstate g
+    | n==1      = return [initialstate]
+    | otherwise = do
         newpath <- metropolisStep scene mutations initialstate g
         futureresults <- nMLTSteps scene mutations (n-1) newpath g
-        return $ (initialstate:futureresults)
+        return (initialstate:futureresults)
 
   mltActionStep :: Scene -> [Mutation] -> (MLTState -> a) -> Int -> (Seed,MLTState) -> ((Seed,MLTState),[a])
   mltActionStep scene mutations extractor n (seed,initialpath) = runST $ do
@@ -421,10 +420,11 @@ module Main where
                                s <- save g
                                return (s,ip)
         chunks = n `div` chunksize
-        step k (s,ip)
+        step k oldstate
           | k==0      = []
-          | otherwise = let ((s',p'),chunk) = mltActionStep scene mutations extractor chunksize (s,ip)
-                        in chunk ++ (step (k-1) (s',p'))
+          | otherwise = chunk ++ (step (k-1) newstate)
+                        where (newstate,chunk) = mltActionStep scene mutations extractor chunksize oldstate
+
     in step chunks (seed,initialpath)
     
 
@@ -464,19 +464,17 @@ module Main where
         oldnodecount = length oldstate
     if coinflip
       then do -- add node
+        rndtranslation <- randomExponential3D l g
         addindex <- randomIntInRange (0,oldnodecount) g
         let (prelist,postlist) = splitAt addindex oldstate
-        if addindex>0 && addindex<oldnodecount
-          then do -- interior node
-            rndtranslation <- randomExponential3D l g
-            let prenode = last prelist
-                postnode = head postlist
-                avgnode = 0.5*<>(prenode + postnode)
-                newnode = avgnode + rndtranslation
-            return $ prelist ++ [newnode] ++ postlist
-          else do -- end node
-            newnode <- randomPointInUnitSphere g
-            return $ prelist ++ [newnode] ++ postlist
+            anchor
+              | addindex==0            = if null postlist then Vector3 0 0 0 else head postlist
+              | addindex==oldnodecount = if null  prelist then Vector3 0 0 0 else last  prelist
+              | otherwise              = let prenode = last prelist
+                                             postnode = head postlist
+                                         in 0.5*<>(prenode + postnode)
+            newnode = anchor + rndtranslation
+        return $ prelist ++ [newnode] ++ postlist
       else if oldnodecount > 1
         then do -- delete node
           delindex <- randomListIndex oldstate g
@@ -484,6 +482,24 @@ module Main where
           return $ prelist ++ (tail postlist)
         else do
           return oldstate
+
+  pathLengthMutationTransitionProbability :: Double -> MLTState -> MLTState -> Double
+  pathLengthMutationTransitionProbability lambda oldpath newpath =
+    let oldpathlength = length oldpath
+        newpathlength = length newpath
+    in 0.5 * if newpathlength > oldpathlength
+      then -- added node
+        let newnodeindex = fromMaybe oldpathlength $ List.findIndex (uncurry (/=)) $ zip oldpath newpath
+            newnode = newpath!!newnodeindex
+            anchor
+              | newnodeindex==0             = if null oldpath then Vector3 0 0 0 else head oldpath
+              | newnodeindex==oldpathlength = if null oldpath then Vector3 0 0 0 else last oldpath
+              | otherwise                   = 0.5*<>(sum.(take 2) $ drop (newnodeindex-1) oldpath)
+            distance = vmag (newnode - anchor)
+            exp3dpdf = \r -> (exp (-r/lambda))/(4*pi*lambda*r*r)
+        in (exp3dpdf distance) / (fromIntegral $ length newpath)
+      else -- deleted node
+        1 / (max 1 (fromIntegral oldpathlength))
 
 
   acceptanceProbabilityOf :: Mutation -> Scene -> MLTState -> MLTState -> Double
@@ -493,25 +509,7 @@ module Main where
     defautAcceptanceProbability (measurementContribution scene) (\_ _ -> 1) oldstate newstate
   acceptanceProbabilityOf (PathLengthMutation l) scene oldstate newstate =
     defautAcceptanceProbability (measurementContribution scene) (pathLengthMutationTransitionProbability l) oldstate newstate
-
-  pathLengthMutationTransitionProbability :: Double -> MLTState -> MLTState -> Double
-  pathLengthMutationTransitionProbability lambda oldpath newpath =
-    let oldpathlength = length oldpath
-        newpathlength = length newpath
-    in 0.5 * if newpathlength > oldpathlength
-      then -- added node
-        let newnodeindex = fromMaybe oldpathlength $ List.findIndex (uncurry (/=)) $ zip oldpath newpath
-            plfactor = 1 / (fromIntegral $ length newpath)
-        in plfactor * if newnodeindex==0 || newnodeindex==oldpathlength
-                        then 0.75 / pi
-                        else let exp3d = \r -> (exp (-r/lambda))/(4*pi*lambda*r*r)
-                                 newnode = newpath!!newnodeindex
-                                 neighbouravg = 0.5*<>(sum.(take 2) $ drop (newnodeindex-1) oldpath)
-                                 disttoavg = vmag (newnode - neighbouravg)
-                             in exp3d disttoavg
-      else -- deleted node
-        1 / (max 1 (fromIntegral oldpathlength))
-
+    
 
   --
   -- path stuff
@@ -524,14 +522,6 @@ module Main where
   finalizePath :: Path -> Path
   finalizePath = addSensorNode . addLightSourceNode
   
-  standardScene = let
-      container = SphereContainer $ Sphere (Vector3 0 0 0) 1
-      sigma = 10
-      material = Material 0 sigma
-      texture = Homogenous material
-      entities = [Entity container [texture]]
-    in Scene [] entities
-
   measurementContribution (Scene lightsources entities) path = if null path
     then 0
     else let scattercrosssections = map (materialScattering.(entities `summedMaterialsAt`)) path
@@ -571,20 +561,19 @@ module Main where
                          pathLengthMutationTransitionProbability 0.1 testpath2 testpath1
                          ]
   --testacceptanceratio == [14.474861791724885,7.953182840852547,5.968310365946075e-2,0.25]
-  
+  standardScene = let
+      container = SphereContainer $ Sphere (Vector3 0 0 0) 1
+      sigma = 10
+      material = Material 0 sigma
+      texture = Homogenous material
+      entities = [Entity container [texture]]
+    in Scene [] entities
   
   
   showSample (x,y) = printf "{%f,%f}" x y
   showSamplesForMathematica :: [(Double,Double)] -> String
   showSamplesForMathematica samples = "testsamples={" ++ (concat $ List.intersperse ",\n" $ map showSample samples) ++ "};"
 
-  {--  
-  main = do
-    [n,chunksize] <- map read `fmap` getArgs
-    let chunks = n `div` chunksize
-        samples = concat [runST $ mltAction testScene seed chunksize 1 | seed <- [1..chunks]]
-    putStrLn.showSamplesForMathematica $ samples
-  --}
   main = do
     [n,chunksize] <- map read `fmap` getArgs
     let mutations = [ExponentialNodeTranslation 0.15,
@@ -593,8 +582,10 @@ module Main where
                      ExponentialImageNodeTranslation 0.04,
                      PathLengthMutation 0.1]
         extractor = ((\v -> (v3x v, v3y v)).last)
+        --extractor = (subtract 1).length.finalizePath
         samples = mltAction testScene mutations extractor 1 n chunksize
     putStrLn.showSamplesForMathematica $ samples
+    --putStrLn.show $ samples
 
     
   --main = putStrLn "Hi there!"
