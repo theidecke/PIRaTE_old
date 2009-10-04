@@ -595,9 +595,10 @@ module Main where
       h = 2.0 / (fromIntegral n)
       grid1d = map (\i -> h*(fromIntegral i) -1) [0..n]
       cells1d = edgeMap (,) grid1d
-      cells2d = [[(xcell,ycell) | xcell <- cells1d] | ycell <- reverse cells1d]
-      cell2filter ((xmin,xmax),(ymin,ymax)) = filter (\(x,y) -> x>=xmin && x<=xmax && y>=ymin && y<=ymax) samples
-    in map (map (length.cell2filter)) cells2d
+      cells2xfilter (xmin,xmax) = map snd $ filter (\(x,_) -> x>=xmin && x<=xmax) samples
+      xbinnedsamples = map cells2xfilter $ cells1d
+      cells2yfilter (ymin,ymax) = map (length.(filter (\y -> y>=ymin && y<=ymax))) xbinnedsamples
+    in map cells2yfilter $ reverse cells1d
   
   putBinnedPhotonCounts gridsize samples = do
     let photonbincounts = binSamples samples gridsize
