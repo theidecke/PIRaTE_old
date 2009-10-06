@@ -51,17 +51,6 @@ module Main where
   data Container = SphereContainer Sphere
   instance Show Container where
     show (SphereContainer s) = show s
-  instance Confineable Container where
-    contains      (SphereContainer s) = contains s
-    intersectedBy (SphereContainer s) = intersectedBy s
-    randomPointIn (SphereContainer s) = randomPointIn s
-  
-  -- Containers should be able to do the following:
-  class Confineable a where
-    contains      :: a -> Point -> Bool
-    intersectedBy :: a -> Ray -> [Interval]
-    randomPointIn :: a -> Gen s -> ST s Point
-    
     
   -- Sphere
   data Sphere = Sphere {
@@ -71,30 +60,39 @@ module Main where
   instance Show Sphere where
     show (Sphere c r) = "Sphere at " ++ (showVector3 c) ++ " with Radius " ++ (show r)
 
-  -- Sphere implements the Confineable type class
-  instance Confineable Sphere where
-    contains !(Sphere c r) !p = normsq (p - c) <= r*r
-    {-# INLINE contains #-}
+  -- Containers should be able to do the following: 
+  contains      :: Container -> Point -> Bool
+  contains      (SphereContainer s) = sphereContains s
+  intersectedBy :: Container -> Ray -> [Interval]
+  intersectedBy (SphereContainer s) = sphereIntersectedBy s
+  randomPointIn :: Container -> Gen s -> ST s Point
+  randomPointIn (SphereContainer s) = sphereRandomPointIn s
+  
+  -- Sphere implements the Container functions
+  sphereContains      :: Sphere -> Point -> Bool
+  sphereContains (Sphere c r) p = normsq (p - c) <= r*r
+  {-# INLINE sphereContains #-}
 
-    intersectedBy !(Sphere center radius) !(Ray origin direction) = 
-      let offset = origin - center
-          oo = offset `vdot` offset
-          od = offset `vdot` direction
-          dd = direction `vdot` direction
-          discriminant = od*od - dd*(oo - radius*radius)
-      in if discriminant <= 0 
-          then []
-          else let ddinv = 1 / dd
-                   alpha0 = ddinv * (-od)
-                   alphaDelta = ddinv * (sqrt discriminant)
-                   alphas = (alpha0 - alphaDelta,
-                             alpha0 + alphaDelta)
-               in [alphas]
-               
-    randomPointIn !(Sphere center radius) g = do
-      unitpoint <- randomPointInUnitSphere g
-      return $ center + radius *<> unitpoint
-                   
+  sphereIntersectedBy :: Sphere -> Ray -> [Interval]
+  sphereIntersectedBy (Sphere center radius) (Ray origin direction) = 
+    let offset = origin - center
+        oo = offset `vdot` offset
+        od = offset `vdot` direction
+        dd = direction `vdot` direction
+        discriminant = od*od - dd*(oo - radius*radius)
+    in if discriminant <= 0 
+        then []
+        else let ddinv = 1 / dd
+                 alpha0 = ddinv * (-od)
+                 alphaDelta = ddinv * (sqrt discriminant)
+                 alphas = (alpha0 - alphaDelta,
+                           alpha0 + alphaDelta)
+             in [alphas]
+             
+  sphereRandomPointIn :: Sphere -> Gen s -> ST s Point
+  sphereRandomPointIn (Sphere center radius) g = do
+    unitpoint <- randomPointInUnitSphere g
+    return $ center + radius *<> unitpoint
           
   
   -- Material contains local absorption and scattering properties
@@ -580,7 +578,7 @@ module Main where
   --testacceptanceratio == [14.474861791724885,7.953182840852547,5.968310365946075e-2,0.25]
   standardScene = let
       container = SphereContainer $ Sphere (Vector3 0 0 0) 1
-      sigma = 10
+      sigma = 5
       material = Material 0 sigma
       texture = Homogenous material
       entities = [Entity container [texture]]
@@ -630,10 +628,10 @@ module Main where
     let mutations = [(3,ExponentialNodeTranslation 0.1),
                      (4,ExponentialImageNodeTranslation 0.3),
                      (3,PathLengthMutation 0.1)]
-        extractor = ((\v -> (v3x v, v3y v)).last)
+        extractor = (\v -> (v3x v, v3y v)) . last
         --extractor = (subtract 1).length.finalizePath
         chunksize = min 2500 n
-        samples = mltAction testScene mutations extractor 98183 n chunksize
+        samples = mltAction standardScene mutations extractor 19912 n chunksize
     putBinnedPhotonCounts gridsize samples
     --putPhotonList samples
     --putStrLn.show $ samples
