@@ -5,6 +5,7 @@ module Main where
   import Data.Vector
   import Data.Maybe
   import qualified Data.List as List
+  import qualified Data.Map as Map
   import qualified Data.Set as Set
   import Control.Monad
   import Control.Monad.ST
@@ -532,7 +533,7 @@ module Main where
   addLightSourceNode :: Path -> Path
   addLightSourceNode path = (Vector3 0 0 0):path
   addSensorNode :: Path -> Path
-  addSensorNode path = path ++ [((Vector3 1 1 0)*(last path) - (Vector3 0 0 1))]
+  addSensorNode path = path ++ [((Vector3 1 1 0)*(last path) + (Vector3 0 0 1))]
   finalizePath :: Path -> Path
   finalizePath = addSensorNode . addLightSourceNode
   
@@ -554,6 +555,7 @@ module Main where
   edgeMap f (a:b:rest) = (f a b):(edgeMap f (b:rest))
     
   -- test-stuff
+
   testEntities = let sph1 = Sphere (Vector3 0.5 0 0) 0.5
                      sph2 = Sphere (Vector3 (-0.5) 0 0) 0.5
                      cont1 = SphereContainer sph1
@@ -565,6 +567,7 @@ module Main where
                      ent1 = Entity cont1 [tex1]
                      ent2 = Entity cont2 [tex2]
                  in [ent1,ent2]
+
   testRay = Ray (Vector3 0 0 0) $ normalize (Vector3 0 0 1)
   testScene = Scene [] testEntities
   testpath1 = [Vector3 0.000124201 (-0.0123588) 0.00415517]
@@ -591,14 +594,30 @@ module Main where
   showListForMathematica showelement list = "{" ++ (concat $ List.intersperse "," $ map showelement list) ++ "}\n"
   showGrid2DForMathematica = showListForMathematica (showListForMathematica show)
   
+  binSamples :: [(Double,Double)] -> Int -> [[Int]]
   binSamples samples n = let
-      h = 2.0 / (fromIntegral n)
-      grid1d = map (\i -> h*(fromIntegral i) -1) [0..n]
-      cells1d = edgeMap (,) grid1d
-      cells2xfilter (xmin,xmax) = map snd $ filter (\(x,_) -> x>=xmin && x<=xmax) samples
-      xbinnedsamples = map cells2xfilter $ cells1d
-      cells2yfilter (ymin,ymax) = map (length.(filter (\y -> y>=ymin && y<=ymax))) xbinnedsamples
-    in map cells2yfilter $ reverse cells1d
+      pairMap f (x,y) = (f x, f y)
+
+      gridIndices :: Int -> [[(Int,Int)]]
+      gridIndices n = [[(i,j) | i<-indices1d] | j <- reverse indices1d]
+        where indices1d = [0..n-1]
+
+      toUnitSquare :: [(Double,Double)] -> [(Double,Double)]
+      toUnitSquare samples = map (pairMap (\x -> 0.5*(x+1))) samples
+
+      coordsToGridIndex :: Int -> (Double,Double) -> (Int,Int)
+      coordsToGridIndex n point = pairMap (\x -> truncate $ (fromIntegral n)*x) point
+
+      incBin :: Map.Map (Int,Int) Int -> (Int,Int) -> Map.Map (Int,Int) Int
+      incBin oldmap index = Map.insertWith' (+) index 1 oldmap
+
+      getBinCount :: Map.Map (Int,Int) Int -> (Int,Int) -> Int
+      getBinCount fullbins index = Map.findWithDefault 0 index fullbins
+      
+      emptybins = Map.empty
+      sampleindices = map (coordsToGridIndex n) (toUnitSquare samples)
+      fullbins = List.foldl' incBin emptybins sampleindices
+    in map (map $ getBinCount fullbins) (gridIndices n)
   
   putBinnedPhotonCounts gridsize samples = do
     let photonbincounts = binSamples samples gridsize
@@ -614,7 +633,7 @@ module Main where
         extractor = ((\v -> (v3x v, v3y v)).last)
         --extractor = (subtract 1).length.finalizePath
         chunksize = min 2500 n
-        samples = mltAction standardScene mutations extractor 98183 n chunksize
+        samples = mltAction testScene mutations extractor 98183 n chunksize
     putBinnedPhotonCounts gridsize samples
     --putPhotonList samples
     --putStrLn.show $ samples
