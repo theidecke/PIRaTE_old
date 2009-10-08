@@ -93,80 +93,146 @@ module Main where
                  alphas = (alpha0 - alphaDelta,
                            alpha0 + alphaDelta)
              in [alphas]
+  
              
   sphereRandomPointIn :: Sphere -> Gen s -> ST s Point
   sphereRandomPointIn (Sphere center radius) g = do
     unitpoint <- randomPointInUnitSphere g
     return $ center + radius *<> unitpoint
           
+  -- PhaseFunction determines the Direction-dependent scattering probability
+  data PhaseFunction = Isotropic
+                     | Anisotropic (Direction->Direction->Double)
+                     
+  scatterPDF :: PhaseFunction -> Direction -> Direction -> Double
+  scatterPDF         Isotropic   _    _ = 1/(4*pi)
+  scatterPDF (Anisotropic phi) win wout = phi win wout
   
-  -- Material contains local absorption and scattering properties
-  data Material = Material Double Double deriving (Show)
-  materialAbsorption (Material kappa     _) = kappa
-  {-# INLINE materialAbsorption #-}
-  materialScattering (Material     _ sigma) = sigma
-  {-# INLINE materialScattering #-}
-  materialExtinction (Material kappa sigma) = kappa + sigma
-  {-# INLINE materialExtinction #-}
-  addMaterials (Material kappa1 sigma1) (Material kappa2 sigma2) = Material (kappa1+kappa2) (sigma1+sigma2)
-  {-# INLINE addMaterials #-}
+  isIsotropic Isotropic = True
+  isIsotropic         _ = False
+  {-# INLINE isIsotropic #-}
+  
+  instance Show PhaseFunction where
+    show       Isotropic = "Isotropic"
+    show (Anisotropic _) = "Anisotropic"
+
+  weighPhaseFunctions :: [(Double,PhaseFunction)] -> PhaseFunction
+  weighPhaseFunctions phiswithweights' = let
+      phiswithweights = filter ((>0).fst) phiswithweights'
+      (isophiswithweights,aniphiswithweights) = List.partition (isIsotropic.snd) phiswithweights
+      aniweightsum = sum $ map fst aniphiswithweights
+    in if aniweightsum==0
+         then Isotropic
+         else let isoweightsum = sum $ map fst isophiswithweights
+                  normweight = 1 / (isoweightsum + aniweightsum)
+              in Anisotropic (\win wout -> normweight*(
+                    isoweightsum/(4*pi) +
+                    aniweightsum*(sum $ map ((\phi -> scatterPDF phi win wout).snd) aniphiswithweights))
+                  )
   
   -- a Texture contains the spatial dependency of 'a'
   data Texture a = Homogenous a
                  | Inhomogenous (Point->a)
+  
+  instance (Show a) => Show (Texture a) where
+    show   (Homogenous x) = show x
+    show (Inhomogenous _) = "Inhomogenous"
 
   isHomogenous (Homogenous _) = True
   isHomogenous _ = False
   {-# INLINE isHomogenous #-}
-  
-  addHomogenousMaterials (Homogenous m1) (Homogenous m2) = Homogenous (addMaterials m1 m2)
-  {-# INLINE addHomogenousMaterials #-}
-  
-  addInhomogenousMaterials (Inhomogenous f1) (Inhomogenous f2) = Inhomogenous (\p -> addMaterials (f1 p) (f2 p))
-  {-# INLINE addInhomogenousMaterials #-}
-  
+
+  addTexturedDoubles :: Texture Double -> Texture Double -> Texture Double
+  addTexturedDoubles    (Homogenous x)    (Homogenous y) = Homogenous (x+y)
+  addTexturedDoubles    (Homogenous x) (Inhomogenous  f) = Inhomogenous (\p -> x + (f p) )
+  addTexturedDoubles (Inhomogenous  f)    (Homogenous x) = Inhomogenous (\p -> x + (f p) )
+  addTexturedDoubles (Inhomogenous f1) (Inhomogenous f2) = Inhomogenous (\p -> (f1 p) + (f2 p))
+  {-# INLINE addTexturedDoubles #-}
+
+  addTexturedPhaseFunctions :: [(Texture Double, Texture PhaseFunction)] -> Texture PhaseFunction
+  addTexturedPhaseFunctions sigmaphitexturepairs = 
+    let (sigmatexts,phitexts) = unzip sigmaphitexturepairs
+        (homsigmas,inhomsigmas) = List.partition isHomogenous sigmatexts
+        (  homphis,  inhomphis) = List.partition isHomogenous phitexts
+        nohomsigmas   = null homsigmas
+        noinhomsigmas = null inhomsigmas
+        nohomphis     = null homphis
+        noinhomphis   = null inhomphis
+    in if noinhomsigmas && noinhomphis
+        then let sigmas = map (`evaluatedAt` undefined) homsigmas
+                 phis   = map (`evaluatedAt` undefined) homphis
+             in Homogenous $ weighPhaseFunctions $ zip sigmas phis
+        else let sigmasat p = map (`evaluatedAt` p) sigmatexts
+                 phisat   p = map (`evaluatedAt` p) phitexts
+             in Inhomogenous (\p -> weighPhaseFunctions $ zip (sigmasat p) (phisat p))
+    
+          
   -- evaluates a texture of type a at a specific point
   evaluatedAt :: Texture a -> Point -> a
-  evaluatedAt   (Homogenous m) _ = m
+  evaluatedAt   (Homogenous x) _ = x
   evaluatedAt (Inhomogenous f) p = f p
   {-# INLINE evaluatedAt #-}
-  
-  -- combines possibly differently textured materials into one
-  boilDownMaterials :: [Texture Material] -> Texture Material
-  boilDownMaterials !textures =
-    let (homtexts,inhomtexts) = List.partition isHomogenous textures
-        nohomtexts   = null homtexts
-        noinhomtexts = null inhomtexts
-    in if noinhomtexts
-        then if nohomtexts
-               then Homogenous (Material 0 0)
-               else foldl1 addHomogenousMaterials homtexts
-        else if nohomtexts
-               then foldl1 addInhomogenousMaterials inhomtexts
-               else let (Homogenous hommat) = foldl1 addHomogenousMaterials homtexts
-                        combinedinhomtexts  = foldl1 addInhomogenousMaterials inhomtexts
-                    in addInhomogenousMaterials (Inhomogenous (const hommat)) combinedinhomtexts
-  --{-# INLINE boilDownMaterials #-}
-  
-  summedMaterialsAt :: [Entity] -> Point -> Material
-  summedMaterialsAt entities point = boiledTexture `evaluatedAt` point
+
+  -- Material contains local absorption and scattering properties
+  data Material = Material (Texture Double) (Texture Double) (Texture PhaseFunction)
+  materialTexturedAbsorption    (Material kappatex        _      _) = kappatex
+  materialTexturedScattering    (Material        _ sigmatex      _) = sigmatex
+  materialTexturedExtinction    (Material kappatex sigmatex      _) = addTexturedDoubles kappatex sigmatex
+  materialTexturedPhaseFunction (Material        _        _ phitex) = phitex
+
+  instance Show Material where
+    show (Material kappatex sigmatex phitex) =  "kappa="++(show kappatex)++
+                                               ", sigma="++(show sigmatex)++
+                                               ", phi="++(show phitex)
+
+  boilDownMaterials :: [Material] -> Material
+  boilDownMaterials materials = 
+    let kappatextures = map materialTexturedAbsorption materials
+        summedkappa = foldl addTexturedDoubles (Homogenous 0) kappatextures
+        sigmatextures = map materialTexturedScattering materials
+        summedsigma = foldl addTexturedDoubles (Homogenous 0) sigmatextures
+        phitextures = map materialTexturedPhaseFunction materials
+        summedphi = addTexturedPhaseFunctions $ zip sigmatextures phitextures
+    in Material summedkappa summedsigma summedphi
+    
+
+  summedMaterialAt :: [Entity] -> Point -> Material
+  summedMaterialAt entities point = boiledMaterial
     where
       relevantEntities = filter ((`contains` point).entityContainer) entities
-      boiledTexture = boilDownMaterials.concat $ map entityTextures relevantEntities
-  {-# INLINE summedMaterialsAt #-}
+      boiledMaterial = boilDownMaterials.concat $ map entityMaterials relevantEntities
+  {-# INLINE summedMaterialAt #-}
+
+  propertyAt :: (Material->Texture a) -> [Entity] -> Point -> a
+  propertyAt getpropfrom entities point = getpropfrom summat `evaluatedAt` point
+    where summat = summedMaterialAt entities point
+  {-# INLINE propertyAt #-}
+    
+  absorptionAt :: [Entity] -> Point -> Double
+  absorptionAt = propertyAt materialTexturedAbsorption
+  {-# INLINE absorptionAt #-}
+    
+  scatteringAt :: [Entity] -> Point -> Double
+  scatteringAt = propertyAt materialTexturedScattering
+  {-# INLINE scatteringAt #-}
   
-  instance (Show a) => Show (Texture a) where
-    show (Homogenous a) = "Homogenous " ++ (show a)
-    show (Inhomogenous _) = "Inhomogenous "
+  extinctionAt :: [Entity] -> Point -> Double
+  extinctionAt = propertyAt materialTexturedExtinction
+  {-# INLINE extinctionAt #-}
+
+  phaseFunctionAt :: [Entity] -> Point -> PhaseFunction
+  phaseFunctionAt = propertyAt materialTexturedPhaseFunction
+  {-# INLINE phaseFunctionAt #-}
 
   -- an Entity is a container filled with light-influencing material
   data Entity = Entity {
       entityContainer::Container,
-      entityTextures::[Texture Material]
+      entityMaterials::[Material]
     }
+    
   instance Show Entity where
-    show (Entity container textures) = "Entity contained by a " ++ (show container) ++
-                                       " filled with " ++ (show textures)
+    show (Entity container materials) = "Entity contained by a " ++ (show container) ++
+                                        " filled with " ++ (show materials)
   
 
   -- a Lightsource is a container filled with emitting material
@@ -180,7 +246,7 @@ module Main where
       sceneLightsources::[Lightsource],
       sceneEntities::[Entity]
     }
-
+    
   -- the Bool is used to represent if the IntervalLimiter is the begin of an interval
   data IntervalLimiter a = IntervalLimiter {
       intervalLimiterKey::a,
@@ -227,6 +293,7 @@ module Main where
   cutOverlaps' active ((IntervalLimiter _ isbegin _):[]) =
     if isbegin then error "last intervallimiter shouldn't be a begin" else []  
   
+  {--
   cutoverlapstestcase = concat.map (uncurry fromInterval) $
     zip [(1,5),(1,7),(2,6),(2,5),(3,4),(1,5)] [1,2,3,4,5,6]
   testCutOverlaps = cutOverlaps cutoverlapstestcase == [
@@ -234,68 +301,69 @@ module Main where
       ((3.0,4.0),Set.fromList [1,2,3,4,5,6]),((4.0,5.0),Set.fromList [1,2,3,4,6]),
       ((5.0,6.0),Set.fromList [2,3])        ,((6.0,7.0),Set.fromList [2])
     ]
+    --}
 
 
-  disjunctIntervalsWithCondensedTextures :: [Entity] -> Ray -> [(Interval,Texture Material)]
-  disjunctIntervalsWithCondensedTextures entities ray = let
+  disjunctIntervalsWithCondensedMaterials :: [Entity] -> Ray -> [(Interval,Material)]
+  disjunctIntervalsWithCondensedMaterials entities ray = let
       intervals = [entityContainer entity `intersectedBy` ray | entity<-entities]
       entityindices = [(0::Int)..(length entities -1)]
       nestedindexedintervals = zip intervals entityindices
       indexedintervals = concat [map (\x -> (x, snd ii)) (fst ii) | ii<-nestedindexedintervals]
       taggeddisjointintervals = cutOverlaps.concat $ map (uncurry fromInterval) indexedintervals
-      intervaltextureindices = map ((Set.toList).snd) taggeddisjointintervals
-      entitytexturelists = map entityTextures entities
-      intervaltextures = [concat $ map (entitytexturelists!!) textureindices | textureindices<-intervaltextureindices]
-      condensedintervaltextures = map boilDownMaterials intervaltextures
+      intervalmaterialindices = map ((Set.toList).snd) taggeddisjointintervals
+      entitymateriallists = map entityMaterials entities
+      intervalmaterials = [concat $ map (entitymateriallists!!) materialindices | materialindices<-intervalmaterialindices]
+      condensedintervalmaterials = map boilDownMaterials intervalmaterials
       disjointintervals = fst $ unzip taggeddisjointintervals
-      refinedintervalswithtextures = zip disjointintervals condensedintervaltextures
-    in refinedintervalswithtextures
-  --{-# INLINE disjunctIntervalsWithCondensedTextures #-}
-  
+      refinedintervalswithmaterials = zip disjointintervals condensedintervalmaterials
+    in refinedintervalswithmaterials
+    
+
   -- sort out intervals that are before the ray starts or further away than maxDist
   -- and clip intervals that span across these bounds
-  clipAndFilterTexturedIntervals :: Double -> [(Interval,Texture Material)] -> [(Interval,Texture Material)]
-  clipAndFilterTexturedIntervals maxDist texturedintervals = let
+  clipAndFilterIntervalsWithMaterial :: Double -> [(Interval,Material)] -> [(Interval,Material)]
+  clipAndFilterIntervalsWithMaterial maxDist intervalswithmaterials = let
       maxDist' = max 0 maxDist
       outsideOfInterest = (uncurry (\x y -> x>=maxDist' || y<=0)).fst
       filterIntervals = filter (not.outsideOfInterest)
       clipInterval (x,y) = (max 0 x, min maxDist' y)
       clipIntervals = map (uncurry (\x y -> (clipInterval x, y)))
-    in filterIntervals . clipIntervals $ texturedintervals
-
+    in filterIntervals . clipIntervals $ intervalswithmaterials
+  
+  
   data ProbeResult = MaxDepthAtDistance Double | MaxDistAtDepth Double deriving (Show)
   getProbeResultDepth (MaxDistAtDepth depth) = depth
   {-# INLINE getProbeResultDepth #-}
   
-  consumeIntervals :: Ray -> Double -> Double -> [(Interval,Texture Material)] -> ProbeResult
+  consumeIntervals :: Ray -> Double -> Double -> [(Interval,Material)] -> ProbeResult
   consumeIntervals ray maxDepth accumulatedDepth [] = MaxDistAtDepth accumulatedDepth
-  consumeIntervals ray maxDepth accumulatedDepth (((a,b),  Homogenous  m):rest) = let
+  consumeIntervals ray maxDepth accumulatedDepth (((a,b), m):rest) = let
       remainingDepth = maxDepth - accumulatedDepth
       intervalLength = b - a
-      extinction = materialExtinction m
+      extinction = materialTexturedExtinction m `evaluatedAt` undefined -- only works for Homogenous Materials
       intervalDepth = extinction * intervalLength
     in if remainingDepth > intervalDepth
          then consumeIntervals ray maxDepth (accumulatedDepth + intervalDepth) rest
          else let neededDist = remainingDepth / extinction
               in MaxDepthAtDistance (a+neededDist)
-
-  consumeIntervals ray maxDepth accumulatedDepth (((a,b),Inhomogenous mf):rest) = undefined
-
+  
   -- casts a Ray through a list of entities until either a maximum optical depth
   -- or a maximum distance is reached
   probeEntitiesWithRay :: [Entity] -> Ray -> Double -> Double -> ProbeResult
   probeEntitiesWithRay entities ray maxDist maxDepth = let
-      refinedintervalswithtextures = disjunctIntervalsWithCondensedTextures entities ray
-      clippedintervals = clipAndFilterTexturedIntervals maxDist refinedintervalswithtextures
+      refinedintervalswithtextures = disjunctIntervalsWithCondensedMaterials entities ray
+      clippedintervals = clipAndFilterIntervalsWithMaterial maxDist refinedintervalswithtextures
     in consumeIntervals ray maxDepth 0 clippedintervals
-  
+            
+            
   opticalDepthBetween entities v w = let
       infinity = 1/(0::Double)
       distance = vmag $ w - v
       ray = Ray v ((1/distance)*<>(w-v))
     in getProbeResultDepth $ probeEntitiesWithRay entities ray distance infinity
-
-  
+            
+            
   --
   -- random-dependent stuff starts here!
   --
@@ -542,7 +610,7 @@ module Main where
   
   measurementContribution (Scene lightsources entities) path = if null path
     then 0
-    else let scattercrosssections = map (materialScattering.(entities `summedMaterialsAt`)) path
+    else let scattercrosssections = map (entities `scatteringAt`) path
          in if any (==0) scattercrosssections
               then 0
               else let scatterfactor = product $ map (*(1/(4*pi))) scattercrosssections
@@ -561,19 +629,16 @@ module Main where
 
   testEntities = let sph1 = Sphere (Vector3 0.3 0 0) 0.5
                      sph2 = Sphere (Vector3 (-0.5) 0 0) 0.3
-                     sph3 = Sphere (Vector3 0.25 0.1 0.15) 0.15
+                     sph3 = Sphere (Vector3 0.2 0.1 0.15) 0.1
                      cont1 = SphereContainer sph1
                      cont2 = SphereContainer sph2
                      cont3 = SphereContainer sph3
-                     mat1 = Material 3.0 4.0
-                     mat2 = Material 0.0 7.0
-                     mat3 = Material 20.0 0.0
-                     tex1 = Homogenous mat1
-                     tex2 = Homogenous mat2
-                     tex3 = Homogenous mat3
-                     ent1 = Entity cont1 [tex1]
-                     ent2 = Entity cont2 [tex2]
-                     ent3 = Entity cont3 [tex3]
+                     mat1 = Material (Homogenous  3.0) (Homogenous 4.0) (Homogenous Isotropic)
+                     mat2 = Material (Homogenous  0.0) (Homogenous 7.0) (Homogenous Isotropic)
+                     mat3 = Material (Homogenous 40.0) (Homogenous 0.0) (Homogenous Isotropic)
+                     ent1 = Entity cont1 [mat1]
+                     ent2 = Entity cont2 [mat2]
+                     ent3 = Entity cont3 [mat3]
                  in [ent1,ent2,ent3]
 
   testRay = Ray (Vector3 0 0 0) $ normalize (Vector3 0 0 1)
@@ -589,9 +654,8 @@ module Main where
   standardScene = let
       container = SphereContainer $ Sphere (Vector3 0 0 0) 1
       sigma = 1
-      material = Material 0 sigma
-      texture = Homogenous material
-      entities = [Entity container [texture]]
+      material = Material (Homogenous 0) (Homogenous sigma) (Homogenous Isotropic)
+      entities = [Entity container [material]]
     in Scene [] entities
   
   
@@ -667,8 +731,8 @@ module Main where
         extractor = (\v -> (v3x v, v3y v)) . last
         --extractor = (subtract 1).length.finalizePath
         chunksize = min 2500 n
-        samples = mltAction standardScene mutations extractor 19912 n chunksize
-    putRadiallyBinnedPhotonCounts gridsize samples
+        samples = mltAction testScene mutations extractor 19912 n chunksize
+    putGridBinnedPhotonCounts gridsize samples
     --putGridBinnedPhotonCounts gridsize samples
     --putPhotonList samples
     --putStrLn.show $ samples
@@ -678,4 +742,4 @@ module Main where
     
   -- ghc -O2 -fexcess-precision -optc-ffast-math -optc-O3 -funfolding-use-threshold=16 --make HMLT.hs
   -- ghc -O2 -fexcess-precision -optc-ffast-math -optc-O3 -funfolding-use-threshold=16 --make HMLT.hs -prof -auto-all -caf-all -fforce-recomp
-  
+  --}
