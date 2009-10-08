@@ -63,10 +63,15 @@ module Main where
   -- Containers should be able to do the following: 
   contains      :: Container -> Point -> Bool
   contains      (SphereContainer s) = sphereContains s
+  {-# INLINE contains #-}
+
   intersectedBy :: Container -> Ray -> [Interval]
   intersectedBy (SphereContainer s) = sphereIntersectedBy s
+  {-# INLINE intersectedBy #-}
+
   randomPointIn :: Container -> Gen s -> ST s Point
   randomPointIn (SphereContainer s) = sphereRandomPointIn s
+  {-# INLINE randomPointIn #-}
   
   -- Sphere implements the Container functions
   sphereContains      :: Sphere -> Point -> Bool
@@ -554,17 +559,22 @@ module Main where
     
   -- test-stuff
 
-  testEntities = let sph1 = Sphere (Vector3 0.5 0 0) 0.5
-                     sph2 = Sphere (Vector3 (-0.5) 0 0) 0.5
+  testEntities = let sph1 = Sphere (Vector3 0.3 0 0) 0.5
+                     sph2 = Sphere (Vector3 (-0.5) 0 0) 0.3
+                     sph3 = Sphere (Vector3 0.25 0.1 0.15) 0.15
                      cont1 = SphereContainer sph1
                      cont2 = SphereContainer sph2
+                     cont3 = SphereContainer sph3
                      mat1 = Material 3.0 4.0
                      mat2 = Material 0.0 7.0
+                     mat3 = Material 20.0 0.0
                      tex1 = Homogenous mat1
                      tex2 = Homogenous mat2
+                     tex3 = Homogenous mat3
                      ent1 = Entity cont1 [tex1]
                      ent2 = Entity cont2 [tex2]
-                 in [ent1,ent2]
+                     ent3 = Entity cont3 [tex3]
+                 in [ent1,ent2,ent3]
 
   testRay = Ray (Vector3 0 0 0) $ normalize (Vector3 0 0 1)
   testScene = Scene [] testEntities
@@ -578,7 +588,7 @@ module Main where
   --testacceptanceratio == [14.474861791724885,7.953182840852547,5.968310365946075e-2,0.25]
   standardScene = let
       container = SphereContainer $ Sphere (Vector3 0 0 0) 1
-      sigma = 5
+      sigma = 1
       material = Material 0 sigma
       texture = Homogenous material
       entities = [Entity container [texture]]
@@ -592,8 +602,8 @@ module Main where
   showListForMathematica showelement list = "{" ++ (concat $ List.intersperse "," $ map showelement list) ++ "}\n"
   showGrid2DForMathematica = showListForMathematica (showListForMathematica show)
   
-  binSamples :: [(Double,Double)] -> Int -> [[Int]]
-  binSamples samples n = let
+  binSamplesInGrid :: [(Double,Double)] -> Int -> [[Int]]
+  binSamplesInGrid samples n = let
       pairMap f (x,y) = (f x, f y)
 
       gridIndices :: Int -> [[(Int,Int)]]
@@ -617,9 +627,35 @@ module Main where
       fullbins = List.foldl' incBin emptybins sampleindices
     in map (map $ getBinCount fullbins) (gridIndices n)
   
-  putBinnedPhotonCounts gridsize samples = do
-    let photonbincounts = binSamples samples gridsize
-    putStrLn $ "binnedphotons=" ++ (init (showGrid2DForMathematica photonbincounts)) ++ ";\n"
+  binSamplesRadially :: [(Double,Double)] -> Int -> [Int]
+  binSamplesRadially samples n = let
+      gridIndices :: Int -> [Int]
+      gridIndices n = [0..n-1]
+
+      toCenterDistance :: [(Double,Double)] -> [Double]
+      toCenterDistance samples = map (\(x,y) -> sqrt (x*x+y*y)) samples
+
+      centerDistanceToBinIndex :: Int -> Double -> Int
+      centerDistanceToBinIndex n distance = truncate $ (fromIntegral n)*distance
+
+      incBin :: Map.Map Int Int -> Int -> Map.Map Int Int
+      incBin oldmap index = Map.insertWith' (+) index 1 oldmap
+
+      getBinCount :: Map.Map Int Int -> Int -> Int
+      getBinCount fullbins index = Map.findWithDefault 0 index fullbins
+
+      emptybins = Map.empty
+      sampleindices = map (centerDistanceToBinIndex n) (toCenterDistance samples)
+      fullbins = List.foldl' incBin emptybins sampleindices
+    in map (getBinCount fullbins) (gridIndices n)
+  
+  putGridBinnedPhotonCounts gridsize samples = do
+    let photonbincounts = binSamplesInGrid samples gridsize
+    putStrLn $ "binnedphotons=" ++ (init $ showGrid2DForMathematica photonbincounts) ++ ";\n"
+    
+  putRadiallyBinnedPhotonCounts gridsize samples = do
+    let photonbincounts = binSamplesRadially samples gridsize
+    putStrLn $ "radialphotoncounts=" ++ (init $ showListForMathematica show photonbincounts) ++ ";\n"
   
   putPhotonList = putStrLn.showSamplesForMathematica
     
@@ -632,7 +668,8 @@ module Main where
         --extractor = (subtract 1).length.finalizePath
         chunksize = min 2500 n
         samples = mltAction standardScene mutations extractor 19912 n chunksize
-    putBinnedPhotonCounts gridsize samples
+    putRadiallyBinnedPhotonCounts gridsize samples
+    --putGridBinnedPhotonCounts gridsize samples
     --putPhotonList samples
     --putStrLn.show $ samples
 
