@@ -4,9 +4,9 @@ module Main where
 
   import Data.Vector
   import Data.Maybe
-  import qualified Data.List as List
-  import qualified Data.Map as Map
-  import qualified Data.Set as Set
+  import qualified Data.List as L
+  import qualified Data.Map as M
+  import qualified Data.Set as S
   import Control.Monad
   import Control.Monad.ST
   --import qualified Control.Monad.ST.Lazy as Lazy (ST)
@@ -119,7 +119,7 @@ module Main where
   weighPhaseFunctions :: [(Double,PhaseFunction)] -> PhaseFunction
   weighPhaseFunctions phiswithweights' = let
       phiswithweights = filter ((>0).fst) phiswithweights'
-      (isophiswithweights,aniphiswithweights) = List.partition (isIsotropic.snd) phiswithweights
+      (isophiswithweights,aniphiswithweights) = L.partition (isIsotropic.snd) phiswithweights
       aniweightsum = sum $ map fst aniphiswithweights
     in if aniweightsum==0
          then Isotropic
@@ -152,8 +152,8 @@ module Main where
   addTexturedPhaseFunctions :: [(Texture Double, Texture PhaseFunction)] -> Texture PhaseFunction
   addTexturedPhaseFunctions sigmaphitexturepairs = 
     let (sigmatexts,phitexts) = unzip sigmaphitexturepairs
-        (homsigmas,inhomsigmas) = List.partition isHomogenous sigmatexts
-        (  homphis,  inhomphis) = List.partition isHomogenous phitexts
+        (homsigmas,inhomsigmas) = L.partition isHomogenous sigmatexts
+        (  homphis,  inhomphis) = L.partition isHomogenous phitexts
         nohomsigmas   = null homsigmas
         noinhomsigmas = null inhomsigmas
         nohomphis     = null homphis
@@ -273,21 +273,21 @@ module Main where
                                   
   -- transforms a list of tagged intervals possibly overlapping and with coinciding
   -- endpoints into a list of disjoint intervals with taglist
-  cutOverlaps :: (Ord a) => [IntervalLimiter a] -> [(Interval,Set.Set a)]
-  cutOverlaps limiters = cutOverlaps' Set.empty sortedLimiters
-                         where sortedLimiters = List.sort limiters
+  cutOverlaps :: (Ord a) => [IntervalLimiter a] -> [(Interval,S.Set a)]
+  cutOverlaps limiters = cutOverlaps' S.empty sortedLimiters
+                         where sortedLimiters = L.sort limiters
   
-  cutOverlaps' :: (Ord a) => (Set.Set a) -> [IntervalLimiter a] -> [(Interval, Set.Set a)]
+  cutOverlaps' :: (Ord a) => (S.Set a) -> [IntervalLimiter a] -> [(Interval, S.Set a)]
   cutOverlaps' active         [] = []
   cutOverlaps' active (l1:l2:ls)
     | l1==l2    = rest
     | otherwise = ((intervalLimiterPosition l1,
                     intervalLimiterPosition l2), newactive):rest
     where getNewActive (IntervalLimiter key isbegin _)
-            | isbegin   = Set.insert key active
-            | otherwise = Set.delete key active
+            | isbegin   = S.insert key active
+            | otherwise = S.delete key active
           --getNewActive (IntervalLimiter key isbegin _) =
-          --  (if isbegin then Set.insert else Set.delete) key active
+          --  (if isbegin then S.insert else S.delete) key active
           newactive = getNewActive l1
           rest = cutOverlaps' newactive (l2:ls)
   cutOverlaps' active ((IntervalLimiter _ isbegin _):[]) =
@@ -297,9 +297,9 @@ module Main where
   cutoverlapstestcase = concat.map (uncurry fromInterval) $
     zip [(1,5),(1,7),(2,6),(2,5),(3,4),(1,5)] [1,2,3,4,5,6]
   testCutOverlaps = cutOverlaps cutoverlapstestcase == [
-      ((1.0,2.0),Set.fromList [1,2,6])      ,((2.0,3.0),Set.fromList [1,2,3,4,6]),
-      ((3.0,4.0),Set.fromList [1,2,3,4,5,6]),((4.0,5.0),Set.fromList [1,2,3,4,6]),
-      ((5.0,6.0),Set.fromList [2,3])        ,((6.0,7.0),Set.fromList [2])
+      ((1.0,2.0),S.fromList [1,2,6])      ,((2.0,3.0),S.fromList [1,2,3,4,6]),
+      ((3.0,4.0),S.fromList [1,2,3,4,5,6]),((4.0,5.0),S.fromList [1,2,3,4,6]),
+      ((5.0,6.0),S.fromList [2,3])        ,((6.0,7.0),S.fromList [2])
     ]
     --}
 
@@ -311,7 +311,7 @@ module Main where
       nestedindexedintervals = zip intervals entityindices
       indexedintervals = concat [map (\x -> (x, snd ii)) (fst ii) | ii<-nestedindexedintervals]
       taggeddisjointintervals = cutOverlaps.concat $ map (uncurry fromInterval) indexedintervals
-      intervalmaterialindices = map ((Set.toList).snd) taggeddisjointintervals
+      intervalmaterialindices = map ((S.toList).snd) taggeddisjointintervals
       entitymateriallists = map entityMaterials entities
       intervalmaterials = [concat $ map (entitymateriallists!!) materialindices | materialindices<-intervalmaterialindices]
       condensedintervalmaterials = map boilDownMaterials intervalmaterials
@@ -575,7 +575,7 @@ module Main where
         newpathlength = length newpath
     in 0.5 * if newpathlength > oldpathlength
       then -- added node
-        let newnodeindex = fromMaybe oldpathlength $ List.findIndex (uncurry (/=)) $ zip oldpath newpath
+        let newnodeindex = fromMaybe oldpathlength $ L.findIndex (uncurry (/=)) $ zip oldpath newpath
             newnode = newpath!!newnodeindex
             anchor
               | newnodeindex==0             = if null oldpath then Vector3 0 0 0 else head oldpath
@@ -627,19 +627,19 @@ module Main where
     
   -- test-stuff
 
-  testEntities = let sph1 = Sphere (Vector3 0.3 0 0) 0.5
-                     sph2 = Sphere (Vector3 (-0.5) 0 0) 0.3
-                     sph3 = Sphere (Vector3 0.2 0.1 0.15) 0.1
-                     cont1 = SphereContainer sph1
-                     cont2 = SphereContainer sph2
-                     cont3 = SphereContainer sph3
-                     mat1 = Material (Homogenous  3.0) (Homogenous 4.0) (Homogenous Isotropic)
-                     mat2 = Material (Homogenous  0.0) (Homogenous 7.0) (Homogenous Isotropic)
-                     mat3 = Material (Homogenous 40.0) (Homogenous 0.0) (Homogenous Isotropic)
+  testEntities = let cont1 = SphereContainer $ Sphere (Vector3 0.3 0 0) 0.5
+                     cont2 = SphereContainer $ Sphere (Vector3 (-0.5) 0 0) 0.3
+                     cont3 = SphereContainer $ Sphere (Vector3 0.2 0.1 0.15) 0.1
+                     cont4 = SphereContainer $ Sphere (Vector3 (-0.35) (-0.7) 0.0) 0.25
+                     mat1 = Material (Homogenous  3.0) (Homogenous  4.0) (Homogenous Isotropic)
+                     mat2 = Material (Homogenous  0.0) (Homogenous  7.0) (Homogenous Isotropic)
+                     mat3 = Material (Homogenous 40.0) (Homogenous  0.0) (Homogenous Isotropic)
+                     mat4 = Material (Homogenous  0.0) (Homogenous 40.0) (Homogenous Isotropic)
                      ent1 = Entity cont1 [mat1]
                      ent2 = Entity cont2 [mat2]
                      ent3 = Entity cont3 [mat3]
-                 in [ent1,ent2,ent3]
+                     ent4 = Entity cont4 [mat4]
+                 in [ent1,ent2,ent3,ent4]
 
   testRay = Ray (Vector3 0 0 0) $ normalize (Vector3 0 0 1)
   testScene = Scene [] testEntities
@@ -653,7 +653,7 @@ module Main where
   --testacceptanceratio == [14.474861791724885,7.953182840852547,5.968310365946075e-2,0.25]
   standardScene = let
       container = SphereContainer $ Sphere (Vector3 0 0 0) 1
-      sigma = 1
+      sigma = 5.0
       material = Material (Homogenous 0) (Homogenous sigma) (Homogenous Isotropic)
       entities = [Entity container [material]]
     in Scene [] entities
@@ -661,9 +661,9 @@ module Main where
   
   showSample (x,y) = printf "{%f,%f}" x y
   showSamplesForMathematica :: [(Double,Double)] -> String
-  showSamplesForMathematica samples = "testsamples={" ++ (concat $ List.intersperse ",\n" $ map showSample samples) ++ "};"
+  showSamplesForMathematica samples = "testsamples={" ++ (concat $ L.intersperse ",\n" $ map showSample samples) ++ "};"
   
-  showListForMathematica showelement list = "{" ++ (concat $ List.intersperse "," $ map showelement list) ++ "}\n"
+  showListForMathematica showelement list = "{" ++ (concat $ L.intersperse "," $ map showelement list) ++ "}\n"
   showGrid2DForMathematica = showListForMathematica (showListForMathematica show)
   
   binSamplesInGrid :: [(Double,Double)] -> Int -> [[Int]]
@@ -680,15 +680,15 @@ module Main where
       coordsToGridIndex :: Int -> (Double,Double) -> (Int,Int)
       coordsToGridIndex n point = pairMap (\x -> truncate $ (fromIntegral n)*x) point
 
-      incBin :: Map.Map (Int,Int) Int -> (Int,Int) -> Map.Map (Int,Int) Int
-      incBin oldmap index = Map.insertWith' (+) index 1 oldmap
+      incBin :: M.Map (Int,Int) Int -> (Int,Int) -> M.Map (Int,Int) Int
+      incBin oldmap index = M.insertWith' (+) index 1 oldmap
 
-      getBinCount :: Map.Map (Int,Int) Int -> (Int,Int) -> Int
-      getBinCount fullbins index = Map.findWithDefault 0 index fullbins
+      getBinCount :: M.Map (Int,Int) Int -> (Int,Int) -> Int
+      getBinCount fullbins index = M.findWithDefault 0 index fullbins
       
-      emptybins = Map.empty
+      emptybins = M.empty
       sampleindices = map (coordsToGridIndex n) (toUnitSquare samples)
-      fullbins = List.foldl' incBin emptybins sampleindices
+      fullbins = L.foldl' incBin emptybins sampleindices
     in map (map $ getBinCount fullbins) (gridIndices n)
   
   binSamplesRadially :: [(Double,Double)] -> Int -> [Int]
@@ -702,15 +702,15 @@ module Main where
       centerDistanceToBinIndex :: Int -> Double -> Int
       centerDistanceToBinIndex n distance = truncate $ (fromIntegral n)*distance
 
-      incBin :: Map.Map Int Int -> Int -> Map.Map Int Int
-      incBin oldmap index = Map.insertWith' (+) index 1 oldmap
+      incBin :: M.Map Int Int -> Int -> M.Map Int Int
+      incBin oldmap index = M.insertWith' (+) index 1 oldmap
 
-      getBinCount :: Map.Map Int Int -> Int -> Int
-      getBinCount fullbins index = Map.findWithDefault 0 index fullbins
+      getBinCount :: M.Map Int Int -> Int -> Int
+      getBinCount fullbins index = M.findWithDefault 0 index fullbins
 
-      emptybins = Map.empty
+      emptybins = M.empty
       sampleindices = map (centerDistanceToBinIndex n) (toCenterDistance samples)
-      fullbins = List.foldl' incBin emptybins sampleindices
+      fullbins = L.foldl' incBin emptybins sampleindices
     in map (getBinCount fullbins) (gridIndices n)
   
   putGridBinnedPhotonCounts gridsize samples = do
