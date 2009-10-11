@@ -1,4 +1,5 @@
 {-# LANGUAGE BangPatterns #-}
+{-# LANGUAGE ExistentialQuantification #-}
 
 module Main where
 
@@ -34,6 +35,10 @@ module Main where
   fromTwoPoints :: Point -> Point -> Ray
   fromTwoPoints v w = Ray v (normalize (w-v))
 
+  data Plane = Plane {
+      planeNormal :: Direction,
+      planeOffset :: Double {-- how much the plane is shifted in normal direction --}
+    } deriving (Eq,Show)
   type Interval = (Double,Double)
 
   -- some utility functions
@@ -48,10 +53,28 @@ module Main where
     | otherwise = x:(mapAt (k-1) f xs)
 
   -- stuff lives in Containers,
-  data Container = SphereContainer Sphere
+  data Container = forall s. (Confineable s, Show s) => Container s
+
   instance Show Container where
-    show (SphereContainer s) = show s
-    
+    show (Container c) = show c
+  
+  -- Containers should be able to do the following: 
+  class Confineable a where
+    contains      :: a -> Point -> Bool
+    intersectedBy :: a -> Ray -> [Interval]
+    randomPointIn :: a -> Gen s -> ST s Point
+
+  instance Confineable Container where
+    contains      (Container c) = contains c
+    {-# INLINE contains #-}
+
+    intersectedBy (Container c) = intersectedBy c
+    {-# INLINE intersectedBy #-}
+
+    randomPointIn (Container c) = randomPointIn c
+    {-# INLINE randomPointIn #-}
+  
+
   -- Sphere
   data Sphere = Sphere {
       center :: Point,
@@ -60,45 +83,30 @@ module Main where
   instance Show Sphere where
     show (Sphere c r) = "Sphere at " ++ (showVector3 c) ++ " with Radius " ++ (show r)
 
-  -- Containers should be able to do the following: 
-  contains      :: Container -> Point -> Bool
-  contains      (SphereContainer s) = sphereContains s
-  {-# INLINE contains #-}
+  -- Sphere implements the Confineable type class functions
+  instance Confineable Sphere where
+    contains (Sphere c r) p = normsq (p - c) <= r*r
+    {-# INLINE contains #-}
 
-  intersectedBy :: Container -> Ray -> [Interval]
-  intersectedBy (SphereContainer s) = sphereIntersectedBy s
-  {-# INLINE intersectedBy #-}
-
-  randomPointIn :: Container -> Gen s -> ST s Point
-  randomPointIn (SphereContainer s) = sphereRandomPointIn s
-  {-# INLINE randomPointIn #-}
+    intersectedBy (Sphere center radius) (Ray origin direction) = 
+      let offset = origin - center
+          oo = offset `vdot` offset
+          od = offset `vdot` direction
+          dd = direction `vdot` direction
+          discriminant = od*od - dd*(oo - radius*radius)
+      in if discriminant <= 0 
+          then []
+          else let ddinv = 1 / dd
+                   alpha0 = ddinv * (-od)
+                   alphadelta = ddinv * (sqrt discriminant)
+                   alphas = (alpha0 - alphadelta,
+                             alpha0 + alphadelta)
+               in [alphas]
   
-  -- Sphere implements the Container functions
-  sphereContains      :: Sphere -> Point -> Bool
-  sphereContains (Sphere c r) p = normsq (p - c) <= r*r
-  {-# INLINE sphereContains #-}
-
-  sphereIntersectedBy :: Sphere -> Ray -> [Interval]
-  sphereIntersectedBy (Sphere center radius) (Ray origin direction) = 
-    let offset = origin - center
-        oo = offset `vdot` offset
-        od = offset `vdot` direction
-        dd = direction `vdot` direction
-        discriminant = od*od - dd*(oo - radius*radius)
-    in if discriminant <= 0 
-        then []
-        else let ddinv = 1 / dd
-                 alpha0 = ddinv * (-od)
-                 alphaDelta = ddinv * (sqrt discriminant)
-                 alphas = (alpha0 - alphaDelta,
-                           alpha0 + alphaDelta)
-             in [alphas]
-  
-             
-  sphereRandomPointIn :: Sphere -> Gen s -> ST s Point
-  sphereRandomPointIn (Sphere center radius) g = do
-    unitpoint <- randomPointInUnitSphere g
-    return $ center + radius *<> unitpoint
+    randomPointIn (Sphere center radius) g = do
+      unitpoint <- randomPointInUnitSphere g
+      return $ center + radius *<> unitpoint
+    {-# INLINE randomPointIn #-}
           
   -- PhaseFunction determines the Direction-dependent scattering probability
   data PhaseFunction = Isotropic
@@ -107,6 +115,12 @@ module Main where
   scatterPDF :: PhaseFunction -> Direction -> Direction -> Double
   scatterPDF         Isotropic   _    _ = 1/(4*pi)
   scatterPDF (Anisotropic phi) win wout = phi win wout
+  {-# INLINE scatterPDF #-}
+  
+  randomDirectionFrom :: PhaseFunction -> Direction -> Gen s -> ST s Direction
+  randomDirectionFrom       Isotropic   _ g = randomIsotropicDirection g
+  randomDirectionFrom (Anisotropic _) win g = undefined
+  {-# INLINE randomDirectionFrom #-}
   
   isIsotropic Isotropic = True
   isIsotropic         _ = False
@@ -413,23 +427,23 @@ module Main where
   -- generates a d-distributed sample
   distributionSample d g = do
     u1 <- uniform g
-    return $! quantile d (u1::Double)
+    return $ quantile d (u1::Double)
 
   -- generates a random direction vector with length one
-  randomDirection :: Gen s -> ST s Direction
-  randomDirection g = do
+  randomIsotropicDirection :: Gen s -> ST s Direction
+  randomIsotropicDirection g = do
     u1 <- uniform g
     u2 <- uniform g
     let z = 2*(u1::Double) - 1
         phi = 2*pi*(u2::Double)
         rho = sqrt (1 - z*z)
-    return $! Vector3 (rho * (cos phi)) (rho * (sin phi)) z
+    return $ Vector3 (rho * (cos phi)) (rho * (sin phi)) z
 
   randomExponential3D :: Double -> Gen s -> ST s Point
   randomExponential3D lambda g = do
-    rdir <- randomDirection g
+    rdir <- randomIsotropicDirection g
     rexp <- distributionSample (fromLambda (1/lambda)) g
-    return $! rexp *<> rdir
+    return $ rexp *<> rdir
     
   randomPointInUnitSphere :: Gen s -> ST s Point
   randomPointInUnitSphere g = do
@@ -441,7 +455,7 @@ module Main where
         z = 2*(u3::Double)-1
         v = Vector3 x y z
     if normsq v <= 1
-      then return $! v
+      then return $ v
       else randomPointInUnitSphere g
   
   randomPointInEntities entities g = do
@@ -454,12 +468,18 @@ module Main where
     let entities = sceneEntities scene
     replicateM n $ randomPointInEntities entities g
   
-  randomDirections n g = do
-    replicateM n $ randomDirection g
+  randomIsotropicDirections n g = do
+    replicateM n $ randomIsotropicDirection g
 
   runRandomActions seed = runST $ do
     g <- restore seed
-    replicateM 10 $ randomDirection g
+    replicateM 10 $ randomIsotropicDirection g
+
+--
+-- path sampling
+--
+
+  
 
 
 --
@@ -627,10 +647,10 @@ module Main where
     
   -- test-stuff
 
-  testEntities = let cont1 = SphereContainer $ Sphere (Vector3 0.3 0 0) 0.5
-                     cont2 = SphereContainer $ Sphere (Vector3 (-0.5) 0 0) 0.3
-                     cont3 = SphereContainer $ Sphere (Vector3 0.2 0.1 0.15) 0.1
-                     cont4 = SphereContainer $ Sphere (Vector3 (-0.35) (-0.7) 0.0) 0.25
+  testEntities = let cont1 = Container $ Sphere (Vector3 0.3 0 0) 0.5
+                     cont2 = Container $ Sphere (Vector3 (-0.5) 0 0) 0.3
+                     cont3 = Container $ Sphere (Vector3 0.2 0.1 0.15) 0.1
+                     cont4 = Container $ Sphere (Vector3 (-0.35) (-0.7) 0.0) 0.25
                      mat1 = Material (Homogenous  3.0) (Homogenous  4.0) (Homogenous Isotropic)
                      mat2 = Material (Homogenous  0.0) (Homogenous  7.0) (Homogenous Isotropic)
                      mat3 = Material (Homogenous 40.0) (Homogenous  0.0) (Homogenous Isotropic)
@@ -652,7 +672,7 @@ module Main where
                          ]
   --testacceptanceratio == [14.474861791724885,7.953182840852547,5.968310365946075e-2,0.25]
   standardScene = let
-      container = SphereContainer $ Sphere (Vector3 0 0 0) 1
+      container = Container $ Sphere (Vector3 0 0 0) 1
       sigma = 5.0
       material = Material (Homogenous 0) (Homogenous sigma) (Homogenous Isotropic)
       entities = [Entity container [material]]
