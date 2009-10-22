@@ -22,7 +22,7 @@ module Main where
   -- some basic aliases and helper data types
   type Point = Vector3
   type Direction = Vector3
-  showVector3 v = "<"++(show (v3x v))++", "++(show (v3y v))++", "++(show (v3z v))++">"
+  showVector3 v = "<"++ show (v3x v) ++", "++ show (v3y v) ++", "++ show (v3z v) ++">"
   type Path = [Point]
   type MLTState = Path
   data Ray = Ray {
@@ -30,7 +30,7 @@ module Main where
       direction::Direction
     } deriving (Eq)
   instance Show Ray where
-    show (Ray o d) = "Ray starting at "++(showVector3 o)++" going in Direction "++(showVector3 d)
+    show (Ray o d) = "Ray starting at "++ (showVector3 o) ++" going in Direction "++ (showVector3 d) 
 
   fromTwoPoints :: Point -> Point -> Ray
   fromTwoPoints v w = Ray v (normalize (w-v))
@@ -43,14 +43,14 @@ module Main where
 
   -- some utility functions
   normsq v = v `vdot` v
-  normalize v = (1/(vmag v)) *<> v
+  normalize v = (1/vmag v) *<> v
   
   -- applies f only at the kth element of the list and let's the rest untouched
   mapAt :: Int -> (a->a) -> [a] -> [a]
   mapAt _ _ [] = []
   mapAt k f (x:xs)
-    | k==0      = (f x):xs
-    | otherwise = x:(mapAt (k-1) f xs)
+    | k==0      = f x : xs
+    | otherwise = x : mapAt (k-1) f xs
 
   -- stuff lives in Containers,
   data Container = forall s. (Confineable s, Show s) => Container s
@@ -98,7 +98,7 @@ module Main where
           then []
           else let ddinv = 1 / dd
                    alpha0 = ddinv * (-od)
-                   alphadelta = ddinv * (sqrt discriminant)
+                   alphadelta = ddinv * sqrt discriminant
                    alphas = (alpha0 - alphadelta,
                              alpha0 + alphadelta)
                in [alphas]
@@ -140,8 +140,9 @@ module Main where
          else let isoweightsum = sum $ map fst isophiswithweights
                   normweight = 1 / (isoweightsum + aniweightsum)
               in Anisotropic (\win wout -> normweight*(
-                    isoweightsum/(4*pi) +
-                    aniweightsum*(sum $ map ((\phi -> scatterPDF phi win wout).snd) aniphiswithweights))
+                      isoweightsum/(4*pi) +
+                      aniweightsum * sum (map ((\phi -> scatterPDF phi win wout).snd) aniphiswithweights)
+                    )
                   )
   
   -- a Texture contains the spatial dependency of 'a'
@@ -158,9 +159,9 @@ module Main where
 
   addTexturedDoubles :: Texture Double -> Texture Double -> Texture Double
   addTexturedDoubles    (Homogenous x)    (Homogenous y) = Homogenous (x+y)
-  addTexturedDoubles    (Homogenous x) (Inhomogenous  f) = Inhomogenous (\p -> x + (f p) )
-  addTexturedDoubles (Inhomogenous  f)    (Homogenous x) = Inhomogenous (\p -> x + (f p) )
-  addTexturedDoubles (Inhomogenous f1) (Inhomogenous f2) = Inhomogenous (\p -> (f1 p) + (f2 p))
+  addTexturedDoubles    (Homogenous x) (Inhomogenous  f) = Inhomogenous (\p -> x + f p )
+  addTexturedDoubles (Inhomogenous  f)    (Homogenous x) = Inhomogenous (\p -> x + f p )
+  addTexturedDoubles (Inhomogenous f1) (Inhomogenous f2) = Inhomogenous (\p -> f1 p + f2 p)
   {-# INLINE addTexturedDoubles #-}
 
   addTexturedPhaseFunctions :: [(Texture Double, Texture PhaseFunction)] -> Texture PhaseFunction
@@ -325,9 +326,9 @@ module Main where
       nestedindexedintervals = zip intervals entityindices
       indexedintervals = concat [map (\x -> (x, snd ii)) (fst ii) | ii<-nestedindexedintervals]
       taggeddisjointintervals = cutOverlaps.concat $ map (uncurry fromInterval) indexedintervals
-      intervalmaterialindices = map ((S.toList).snd) taggeddisjointintervals
+      intervalmaterialindices = map (S.toList . snd) taggeddisjointintervals
       entitymateriallists = map entityMaterials entities
-      intervalmaterials = [concat $ map (entitymateriallists!!) materialindices | materialindices<-intervalmaterialindices]
+      intervalmaterials = [concatMap (entitymateriallists!!) materialindices | materialindices<-intervalmaterialindices]
       condensedintervalmaterials = map boilDownMaterials intervalmaterials
       disjointintervals = fst $ unzip taggeddisjointintervals
       refinedintervalswithmaterials = zip disjointintervals condensedintervalmaterials
@@ -339,7 +340,7 @@ module Main where
   clipAndFilterIntervalsWithMaterial :: Double -> [(Interval,Material)] -> [(Interval,Material)]
   clipAndFilterIntervalsWithMaterial maxDist intervalswithmaterials = let
       maxDist' = max 0 maxDist
-      outsideOfInterest = (uncurry (\x y -> x>=maxDist' || y<=0)).fst
+      outsideOfInterest = uncurry (\x y -> x>=maxDist' || y<=0) . fst
       filterIntervals = filter (not.outsideOfInterest)
       clipInterval (x,y) = (max 0 x, min maxDist' y)
       clipIntervals = map (uncurry (\x y -> (clipInterval x, y)))
@@ -386,7 +387,7 @@ module Main where
 
   -- generates a uniformly distributed random Int in the interval (a,b)
   randomIntInRange :: (Int,Int) -> Gen s -> ST s Int
-  randomIntInRange (a,b) g = do
+  randomIntInRange (a,b) g =
     if a==b
       then return a
       else do
@@ -394,13 +395,11 @@ module Main where
         let rnddbl = u1::Double
             ad = fromIntegral a
             bd = fromIntegral b
-        return $! a + (truncate $ (bd-ad+1)*rnddbl)
+        return $! a + truncate ((bd-ad+1)*rnddbl)
 
   randomListIndex :: [a] -> Gen s -> ST s Int
   randomListIndex [] g = error "cannot choose an elementindex in an empty list"
-  randomListIndex l g = do
-    rndindex <- randomIntInRange (0,length l - 1) g
-    return rndindex
+  randomListIndex l g = randomIntInRange (0,length l - 1) g
 
   -- chooses uniformly random a list-element
   randomChoice :: [a] -> Gen s -> ST s a
@@ -421,7 +420,7 @@ module Main where
     let randomweight = totalweight*(u1::Double)
     return $ step weightedchoices randomweight
 
-  randomWeightedChoices weightedchoices n g = do
+  randomWeightedChoices weightedchoices n g =
     replicateM n $ randomWeightedChoice weightedchoices g
 
   -- generates a d-distributed sample
@@ -437,7 +436,7 @@ module Main where
     let z = 2*(u1::Double) - 1
         phi = 2*pi*(u2::Double)
         rho = sqrt (1 - z*z)
-    return $ Vector3 (rho * (cos phi)) (rho * (sin phi)) z
+    return $ Vector3 (rho * cos phi) (rho * sin phi) z
 
   randomExponential3D :: Double -> Gen s -> ST s Point
   randomExponential3D lambda g = do
@@ -455,20 +454,19 @@ module Main where
         z = 2*(u3::Double)-1
         v = Vector3 x y z
     if normsq v <= 1
-      then return $ v
+      then return v
       else randomPointInUnitSphere g
   
   randomPointInEntities entities g = do
     entity <- randomChoice entities g
     let container = entityContainer entity
-    point <- randomPointIn container g
-    return point
+    randomPointIn container g
   
   randomPathOfLength scene n g = do
     let entities = sceneEntities scene
     replicateM n $ randomPointInEntities entities g
   
-  randomIsotropicDirections n g = do
+  randomIsotropicDirections n g =
     replicateM n $ randomIsotropicDirection g
 
   runRandomActions seed = runST $ do
@@ -528,7 +526,7 @@ module Main where
         chunks = n `div` chunksize
         step k oldstate
           | k==0      = []
-          | otherwise = chunk ++ (step (k-1) newstate)
+          | otherwise = chunk ++ step (k-1) newstate
                         where (newstate,chunk) = mltActionStep scene mutations extractor chunksize oldstate
 
     in step chunks (seed,initialpath)
@@ -539,8 +537,8 @@ module Main where
   -- t x y should return the transition probability from state x to state y
   defautAcceptanceProbability :: (a -> Double) -> (a -> a -> Double) -> a -> a -> Double
   defautAcceptanceProbability f t oldstate newstate =
-    (/) ((f newstate)*(t newstate oldstate))
-        ((f oldstate)*(t oldstate newstate))
+    (/) ((f newstate) * (t newstate oldstate))
+        ((f oldstate) * (t oldstate newstate))
         
   {--
     -- Mutations should adher to this interface:
@@ -586,7 +584,7 @@ module Main where
           delindex <- randomListIndex oldstate g
           let (prelist,postlist) = splitAt delindex oldstate
           return $ prelist ++ (tail postlist)
-        else do
+        else
           return oldstate
 
   pathLengthMutationTransitionProbability :: Double -> MLTState -> MLTState -> Double
@@ -600,12 +598,12 @@ module Main where
             anchor
               | newnodeindex==0             = if null oldpath then Vector3 0 0 0 else head oldpath
               | newnodeindex==oldpathlength = if null oldpath then Vector3 0 0 0 else last oldpath
-              | otherwise                   = 0.5*<>(sum.(take 2) $ drop (newnodeindex-1) oldpath)
+              | otherwise                   = 0.5*<>(sum . take 2 $ drop (newnodeindex-1) oldpath)
             distance = vmag (newnode - anchor)
-            exp3dpdf = \r -> (exp (-r/lambda))/(4*pi*lambda*r*r)
-        in (exp3dpdf distance) / (fromIntegral $ length newpath)
+            exp3dpdf r = (exp (-r/lambda)) / (4*pi*lambda*r*r)
+        in (exp3dpdf distance) / fromIntegral (length newpath)
       else -- deleted node
-        1 / (max 1 (fromIntegral oldpathlength))
+        1 / max 1 (fromIntegral oldpathlength)
 
 
   acceptanceProbabilityOf :: Mutation -> Scene -> MLTState -> MLTState -> Double
@@ -622,7 +620,7 @@ module Main where
   --
   
   addLightSourceNode :: Path -> Path
-  addLightSourceNode path = (Vector3 0 0 0):path
+  addLightSourceNode = ((Vector3 0 0 0):)
   addSensorNode :: Path -> Path
   addSensorNode path = path ++ [((Vector3 1 1 0)*(last path) + (Vector3 0 0 1))]
   finalizePath :: Path -> Path
@@ -638,16 +636,16 @@ module Main where
                        opticaldepth = sum $ edgeMap (opticalDepthBetween entities) completepath
                        edges = edgeMap (-) completepath
                        geometricfactors = product $ map normsq (init edges)
-                   in scatterfactor*(exp (-opticaldepth))/geometricfactors
+                   in scatterfactor * exp (-opticaldepth) / geometricfactors
                        
   
   edgeMap :: (a->a->b) -> [a] -> [b]
   edgeMap f     (a:[]) = []
-  edgeMap f (a:b:rest) = (f a b):(edgeMap f (b:rest))
+  edgeMap f (a:b:rest) = f a b : edgeMap f (b:rest)
     
   -- test-stuff
 
-  testEntities = let cont1 = Container $ Sphere (Vector3 0.3 0 0) 0.5
+  testEntities = let cont1 = Container (Sphere (Vector3 0.3 0 0) 0.5)
                      cont2 = Container $ Sphere (Vector3 (-0.5) 0 0) 0.3
                      cont3 = Container $ Sphere (Vector3 0.2 0.1 0.15) 0.1
                      cont4 = Container $ Sphere (Vector3 (-0.35) (-0.7) 0.0) 0.25
@@ -663,17 +661,17 @@ module Main where
 
   testRay = Ray (Vector3 0 0 0) $ normalize (Vector3 0 0 1)
   testScene = Scene [] testEntities
+  
   testpath1 = [Vector3 0.000124201 (-0.0123588) 0.00415517]
   testpath2 = [Vector3 0.000124201 (-0.0123588) 0.00415517, Vector3 (-0.160068) (-0.499073) (-0.511448)]
-  testacceptanceratio = [measurementContribution standardScene testpath1,
-                         measurementContribution standardScene testpath2,
+  testacceptanceratio = [measurementContribution (standardScene 1) testpath1,
+                         measurementContribution (standardScene 1) testpath2,
                          pathLengthMutationTransitionProbability 0.1 testpath1 testpath2,
                          pathLengthMutationTransitionProbability 0.1 testpath2 testpath1
                          ]
   --testacceptanceratio == [14.474861791724885,7.953182840852547,5.968310365946075e-2,0.25]
-  standardScene = let
+  standardScene sigma = let
       container = Container $ Sphere (Vector3 0 0 0) 1
-      sigma = 5.0
       material = Material (Homogenous 0) (Homogenous sigma) (Homogenous Isotropic)
       entities = [Entity container [material]]
     in Scene [] entities
@@ -683,7 +681,7 @@ module Main where
   showSamplesForMathematica :: [(Double,Double)] -> String
   showSamplesForMathematica samples = "testsamples={" ++ (concat $ L.intersperse ",\n" $ map showSample samples) ++ "};"
   
-  showListForMathematica showelement list = "{" ++ (concat $ L.intersperse "," $ map showelement list) ++ "}\n"
+  showListForMathematica showelement list = "{" ++ concat (L.intersperse "," $ map showelement list) ++ "}\n"
   showGrid2DForMathematica = showListForMathematica (showListForMathematica show)
   
   binSamplesInGrid :: [(Double,Double)] -> Int -> [[Int]]
@@ -735,11 +733,11 @@ module Main where
   
   putGridBinnedPhotonCounts gridsize samples = do
     let photonbincounts = binSamplesInGrid samples gridsize
-    putStrLn $ "binnedphotons=" ++ (init $ showGrid2DForMathematica photonbincounts) ++ ";\n"
+    putStrLn $ "binnedphotons=" ++ init (showGrid2DForMathematica photonbincounts) ++ ";\n"
     
   putRadiallyBinnedPhotonCounts gridsize samples = do
     let photonbincounts = binSamplesRadially samples gridsize
-    putStrLn $ "radialphotoncounts=" ++ (init $ showListForMathematica show photonbincounts) ++ ";\n"
+    putStrLn $ "radialphotoncounts=" ++ init (showListForMathematica show photonbincounts) ++ ";\n"
   
   putPhotonList = putStrLn.showSamplesForMathematica
     
@@ -751,15 +749,17 @@ module Main where
         extractor = (\v -> (v3x v, v3y v)) . last
         --extractor = (subtract 1).length.finalizePath
         chunksize = min 2500 n
-        samples = mltAction testScene mutations extractor 19912 n chunksize
+        sigma = 10
+        scene = testScene --standardScene sigma
+        samples = mltAction scene mutations extractor 19912 n chunksize
+    --putRadiallyBinnedPhotonCounts gridsize samples
     putGridBinnedPhotonCounts gridsize samples
-    --putGridBinnedPhotonCounts gridsize samples
     --putPhotonList samples
     --putStrLn.show $ samples
 
     
   --main = putStrLn "Hi there!"
     
-  -- ghc -O2 -fexcess-precision -optc-ffast-math -optc-O3 -funfolding-use-threshold=16 --make HMLT.hs
-  -- ghc -O2 -fexcess-precision -optc-ffast-math -optc-O3 -funfolding-use-threshold=16 --make HMLT.hs -prof -auto-all -caf-all -fforce-recomp
+  -- ghc -O2 -fexcess-precision -funfolding-use-threshold=48 --make HMLT.hs -fforce-recomp
+  -- ghc -O2 -fexcess-precision -funfolding-use-threshold=48 --make HMLT.hs -prof -auto-all -caf-all -fforce-recomp
   --}
