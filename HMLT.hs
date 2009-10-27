@@ -541,54 +541,77 @@ module Main where
         ((f oldstate) * (t oldstate newstate))
         
   {--
-    -- Mutations should adher to this interface:
+    -- Mutations should adher to this type class:
     -- gives the acceptance probability for the transition (with parameters of type a)
     -- to a new state
     acceptanceProbabilityOf :: a -> Path -> Path -> Double
     -- mutates 
     mutateWith :: a -> Path -> Gen s -> ST s Path
   --}
+  class Mutating a where
+    mutateWith              :: a -> Scene -> MLTState -> Gen s -> ST s MLTState
+    acceptanceProbabilityOf :: a -> Scene -> MLTState -> MLTState -> Double
+    
+  -- define algebraic datatype which can hold all Mutations which adher to the 'Mutating' type class,
+  data Mutation = forall s. (Mutating s) => Mutation s
+
+  instance Mutating Mutation where
+    mutateWith              (Mutation m) = mutateWith m
+    {-# INLINE mutateWith #-}
+    acceptanceProbabilityOf (Mutation m) = acceptanceProbabilityOf m
+    {-# INLINE acceptanceProbabilityOf #-}
   
-  data Mutation = ExponentialNodeTranslation Double
-                | ExponentialImageNodeTranslation Double
-                | PathLengthMutation Double
+  -- implemented Mutations
+  data ExponentialNodeTranslation = ExponentialNodeTranslation Double
+  data ExponentialImageNodeTranslation = ExponentialImageNodeTranslation Double
+  data IncDecPathLength = IncDecPathLength Double
+
+  instance Mutating ExponentialNodeTranslation where
+    mutateWith (ExponentialNodeTranslation l) scene oldstate g = do
+      rndindex <- randomListIndex oldstate g
+      rndtranslation <- randomExponential3D l g
+      return $ mapAt rndindex (+rndtranslation) oldstate
+    acceptanceProbabilityOf (ExponentialNodeTranslation l) scene oldstate newstate =
+      defautAcceptanceProbability (measurementContribution scene) (\_ _ -> 1) oldstate newstate
+  
+  instance Mutating ExponentialImageNodeTranslation where
+    mutateWith (ExponentialImageNodeTranslation l) scene oldstate g = do
+      rndtranslation <- randomExponential3D l g
+      return $ mapAt (length oldstate - 1) (+rndtranslation) oldstate
+    acceptanceProbabilityOf (ExponentialImageNodeTranslation l) scene oldstate newstate =
+      defautAcceptanceProbability (measurementContribution scene) (\_ _ -> 1) oldstate newstate
+  
+  instance Mutating IncDecPathLength where
+    mutateWith (IncDecPathLength l) scene oldstate g = do
+      u <- uniform g
+      let coinflip = u::Bool
+          oldnodecount = length oldstate
+      if coinflip
+        then do -- add node
+          rndtranslation <- randomExponential3D l g
+          addindex <- randomIntInRange (0,oldnodecount) g
+          let (prelist,postlist) = splitAt addindex oldstate
+              anchor
+                | addindex==0            = if null postlist then Vector3 0 0 0 else head postlist
+                | addindex==oldnodecount = if null  prelist then Vector3 0 0 0 else last  prelist
+                | otherwise              = let prenode = last prelist
+                                               postnode = head postlist
+                                           in 0.5*<>(prenode + postnode)
+              newnode = anchor + rndtranslation
+          return $ prelist ++ [newnode] ++ postlist
+        else if oldnodecount > 1
+          then do -- delete node
+            delindex <- randomListIndex oldstate g
+            let (prelist,postlist) = splitAt delindex oldstate
+            return $ prelist ++ (tail postlist)
+          else
+            return oldstate
+    acceptanceProbabilityOf (IncDecPathLength l) scene oldstate newstate =
+      defautAcceptanceProbability (measurementContribution scene) (incDecPathLengthTransitionProbability l) oldstate newstate
 
 
-  mutateWith :: Mutation -> Scene -> MLTState -> Gen s -> ST s MLTState
-  mutateWith (ExponentialNodeTranslation l) scene oldstate g = do
-    rndindex <- randomListIndex oldstate g
-    rndtranslation <- randomExponential3D l g
-    return $ mapAt rndindex (+rndtranslation) oldstate
-  mutateWith (ExponentialImageNodeTranslation l) scene oldstate g = do
-    rndtranslation <- randomExponential3D l g
-    return $ mapAt (length oldstate - 1) (+rndtranslation) oldstate
-  mutateWith (PathLengthMutation l) scene oldstate g = do
-    u <- uniform g
-    let coinflip = u::Bool
-        oldnodecount = length oldstate
-    if coinflip
-      then do -- add node
-        rndtranslation <- randomExponential3D l g
-        addindex <- randomIntInRange (0,oldnodecount) g
-        let (prelist,postlist) = splitAt addindex oldstate
-            anchor
-              | addindex==0            = if null postlist then Vector3 0 0 0 else head postlist
-              | addindex==oldnodecount = if null  prelist then Vector3 0 0 0 else last  prelist
-              | otherwise              = let prenode = last prelist
-                                             postnode = head postlist
-                                         in 0.5*<>(prenode + postnode)
-            newnode = anchor + rndtranslation
-        return $ prelist ++ [newnode] ++ postlist
-      else if oldnodecount > 1
-        then do -- delete node
-          delindex <- randomListIndex oldstate g
-          let (prelist,postlist) = splitAt delindex oldstate
-          return $ prelist ++ (tail postlist)
-        else
-          return oldstate
-
-  pathLengthMutationTransitionProbability :: Double -> MLTState -> MLTState -> Double
-  pathLengthMutationTransitionProbability lambda oldpath newpath =
+  incDecPathLengthTransitionProbability :: Double -> MLTState -> MLTState -> Double
+  incDecPathLengthTransitionProbability lambda oldpath newpath =
     let oldpathlength = length oldpath
         newpathlength = length newpath
     in 0.5 * if newpathlength > oldpathlength
@@ -605,15 +628,6 @@ module Main where
       else -- deleted node
         1 / max 1 (fromIntegral oldpathlength)
 
-
-  acceptanceProbabilityOf :: Mutation -> Scene -> MLTState -> MLTState -> Double
-  acceptanceProbabilityOf (ExponentialNodeTranslation l) scene oldstate newstate =
-    defautAcceptanceProbability (measurementContribution scene) (\_ _ -> 1) oldstate newstate
-  acceptanceProbabilityOf (ExponentialImageNodeTranslation l) scene oldstate newstate =
-    defautAcceptanceProbability (measurementContribution scene) (\_ _ -> 1) oldstate newstate
-  acceptanceProbabilityOf (PathLengthMutation l) scene oldstate newstate =
-    defautAcceptanceProbability (measurementContribution scene) (pathLengthMutationTransitionProbability l) oldstate newstate
-    
 
   --
   -- path stuff
@@ -666,8 +680,8 @@ module Main where
   testpath2 = [Vector3 0.000124201 (-0.0123588) 0.00415517, Vector3 (-0.160068) (-0.499073) (-0.511448)]
   testacceptanceratio = [measurementContribution (standardScene 1) testpath1,
                          measurementContribution (standardScene 1) testpath2,
-                         pathLengthMutationTransitionProbability 0.1 testpath1 testpath2,
-                         pathLengthMutationTransitionProbability 0.1 testpath2 testpath1
+                         incDecPathLengthTransitionProbability 0.1 testpath1 testpath2,
+                         incDecPathLengthTransitionProbability 0.1 testpath2 testpath1
                          ]
   --testacceptanceratio == [14.474861791724885,7.953182840852547,5.968310365946075e-2,0.25]
   standardScene sigma = let
@@ -679,7 +693,7 @@ module Main where
   
   showSample (x,y) = printf "{%f,%f}" x y
   showSamplesForMathematica :: [(Double,Double)] -> String
-  showSamplesForMathematica samples = "testsamples={" ++ (concat $ L.intersperse ",\n" $ map showSample samples) ++ "};"
+  showSamplesForMathematica samples = "testsamples={" ++ concat (L.intersperse ",\n" $ map showSample samples) ++ "};"
   
   showListForMathematica showelement list = "{" ++ concat (L.intersperse "," $ map showelement list) ++ "}\n"
   showGrid2DForMathematica = showListForMathematica (showListForMathematica show)
@@ -743,9 +757,9 @@ module Main where
     
   main = do
     [gridsize,n] <- map read `fmap` getArgs
-    let mutations = [(3,ExponentialNodeTranslation 0.1),
-                     (4,ExponentialImageNodeTranslation 0.3),
-                     (3,PathLengthMutation 0.1)]
+    let mutations = [(3,Mutation $ ExponentialNodeTranslation 0.1),
+                     (4,Mutation $ ExponentialImageNodeTranslation 0.3),
+                     (3,Mutation $ IncDecPathLength 0.1)]
         extractor = (\v -> (v3x v, v3y v)) . last
         --extractor = (subtract 1).length.finalizePath
         chunksize = min 2500 n
