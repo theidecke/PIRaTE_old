@@ -1,10 +1,14 @@
 {-# LANGUAGE BangPatterns #-}
 {-# LANGUAGE ExistentialQuantification #-}
+{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE TypeSynonymInstances #-}
 
 module Main where
 
   import Data.Vector
   import Data.Maybe
+  import Data.Monoid
   import qualified Data.List as L
   import qualified Data.Map as M
   import qualified Data.Set as S
@@ -107,7 +111,12 @@ module Main where
       unitpoint <- randomPointInUnitSphere g
       return $ center + radius *<> unitpoint
     {-# INLINE randomPointIn #-}
-          
+  
+  -- objects of type a from which we can draw samples of type b
+  class Sampleable a b where
+    probabilityDensityOf :: a -> b -> Double
+    randomSampleFrom     :: a -> Gen s -> ST s b
+    
   -- PhaseFunction determines the Direction-dependent scattering probability
   data PhaseFunction = Isotropic
                      | Anisotropic (Direction->Direction->Double)
@@ -121,7 +130,13 @@ module Main where
   randomDirectionFrom       Isotropic   _ g = randomIsotropicDirection g
   randomDirectionFrom (Anisotropic _) win g = undefined
   {-# INLINE randomDirectionFrom #-}
-  
+
+  instance Sampleable (PhaseFunction,Direction) Direction where
+    probabilityDensityOf (pf,win) wout = scatterPDF pf win wout
+    {-# INLINE probabilityDensityOf #-}
+    randomSampleFrom     (pf,win)    g = randomDirectionFrom pf win g
+    {-# INLINE randomSampleFrom #-}
+      
   isIsotropic Isotropic = True
   isIsotropic         _ = False
   {-# INLINE isIsotropic #-}
@@ -130,6 +145,66 @@ module Main where
     show       Isotropic = "Isotropic"
     show (Anisotropic _) = "Anisotropic"
 
+  newtype WeightedPhaseFunction = WeightedPhaseFunction (Double,PhaseFunction)
+
+  fromPhaseFunction :: PhaseFunction -> WeightedPhaseFunction
+  fromPhaseFunction pf = WeightedPhaseFunction (1,pf)
+  
+  toPhaseFunction :: WeightedPhaseFunction -> PhaseFunction
+  toPhaseFunction (WeightedPhaseFunction (_,Isotropic)) = Isotropic
+  toPhaseFunction (WeightedPhaseFunction (w,Anisotropic phi)) = Anisotropic (\win wout -> (phi win wout)/w)
+  
+  instance Sampleable (WeightedPhaseFunction,Direction) Direction where
+    probabilityDensityOf (WeightedPhaseFunction (w,pf),win) wout = (probabilityDensityOf (pf,win) wout)/w
+    randomSampleFrom     (WeightedPhaseFunction (_,      Isotropic),  _) g = randomIsotropicDirection g
+    randomSampleFrom     (WeightedPhaseFunction (w,Anisotropic phi),win) g = undefined
+    {-# INLINE randomSampleFrom #-}
+    
+  addWeightedPhaseFunctions wpf1@(WeightedPhaseFunction (w1,pf1))
+                            wpf2@(WeightedPhaseFunction (w2,pf2))
+    | w1==0 = wpf2
+    | w2==0 = wpf1
+    | isIsotropic pf1 && isIsotropic pf2 = WeightedPhaseFunction (w1+w2,Isotropic)
+    | otherwise = WeightedPhaseFunction (weightsum, newpf)
+                    where weightsum = w1+w2
+                          pd1 = scatterPDF pf1
+                          pd2 = scatterPDF pf2
+                          newpf = Anisotropic (\win wout -> (pd1 win wout) + (pd2 win wout) )
+
+  instance Monoid WeightedPhaseFunction where
+    mempty = WeightedPhaseFunction (0,Isotropic)
+    mappend = addWeightedPhaseFunctions
+  
+  -- a Texture contains the spatial dependency of 'a'
+  data Texture a = Homogenous a
+                 | Inhomogenous (Point->a)
+  
+  instance (Show a) => Show (Texture a) where
+    show   (Homogenous x) = show x
+    show (Inhomogenous _) = "Inhomogenous"
+
+  isHomogenous (Homogenous _) = True
+  isHomogenous _ = False
+  {-# INLINE isHomogenous #-}
+  
+  -- evaluates a texture of type a at a specific point in space
+  evaluatedAt :: Texture a -> Point -> a
+  evaluatedAt   (Homogenous x) _ = x
+  evaluatedAt (Inhomogenous f) p = f p
+  {-# INLINE evaluatedAt #-}
+  
+  addTexturedDoubles :: Texture Double -> Texture Double -> Texture Double
+  addTexturedDoubles    (Homogenous x)    (Homogenous y) = Homogenous (x+y)
+  addTexturedDoubles    (Homogenous x) (Inhomogenous  f) = Inhomogenous (\p -> x + f p )
+  addTexturedDoubles (Inhomogenous  f)    (Homogenous x) = Inhomogenous (\p -> x + f p )
+  addTexturedDoubles (Inhomogenous f1) (Inhomogenous f2) = Inhomogenous (\p -> f1 p + f2 p)
+  {-# INLINE addTexturedDoubles #-}
+
+  instance Monoid (Texture Double) where
+    mempty = Homogenous 0
+    mappend = addTexturedDoubles
+
+{--
   weighPhaseFunctions :: [(Double,PhaseFunction)] -> PhaseFunction
   weighPhaseFunctions phiswithweights' = let
       phiswithweights = filter ((>0).fst) phiswithweights'
@@ -144,26 +219,8 @@ module Main where
                       aniweightsum * sum (map ((\phi -> scatterPDF phi win wout).snd) aniphiswithweights)
                     )
                   )
-  
-  -- a Texture contains the spatial dependency of 'a'
-  data Texture a = Homogenous a
-                 | Inhomogenous (Point->a)
-  
-  instance (Show a) => Show (Texture a) where
-    show   (Homogenous x) = show x
-    show (Inhomogenous _) = "Inhomogenous"
 
-  isHomogenous (Homogenous _) = True
-  isHomogenous _ = False
-  {-# INLINE isHomogenous #-}
-
-  addTexturedDoubles :: Texture Double -> Texture Double -> Texture Double
-  addTexturedDoubles    (Homogenous x)    (Homogenous y) = Homogenous (x+y)
-  addTexturedDoubles    (Homogenous x) (Inhomogenous  f) = Inhomogenous (\p -> x + f p )
-  addTexturedDoubles (Inhomogenous  f)    (Homogenous x) = Inhomogenous (\p -> x + f p )
-  addTexturedDoubles (Inhomogenous f1) (Inhomogenous f2) = Inhomogenous (\p -> f1 p + f2 p)
-  {-# INLINE addTexturedDoubles #-}
-
+--}
   addTexturedPhaseFunctions :: [(Texture Double, Texture PhaseFunction)] -> Texture PhaseFunction
   addTexturedPhaseFunctions sigmaphitexturepairs = 
     let (sigmatexts,phitexts) = unzip sigmaphitexturepairs
@@ -173,21 +230,16 @@ module Main where
         noinhomsigmas = null inhomsigmas
         nohomphis     = null homphis
         noinhomphis   = null inhomphis
+        weighPhaseFunctions :: [(Double,PhaseFunction)] -> WeightedPhaseFunction
+        weighPhaseFunctions phiswithweights = mconcat $ map WeightedPhaseFunction phiswithweights
     in if noinhomsigmas && noinhomphis
         then let sigmas = map (`evaluatedAt` undefined) homsigmas
                  phis   = map (`evaluatedAt` undefined) homphis
-             in Homogenous $ weighPhaseFunctions $ zip sigmas phis
+             in Homogenous . toPhaseFunction $ weighPhaseFunctions $ zip sigmas phis
         else let sigmasat p = map (`evaluatedAt` p) sigmatexts
                  phisat   p = map (`evaluatedAt` p) phitexts
-             in Inhomogenous (\p -> weighPhaseFunctions $ zip (sigmasat p) (phisat p))
-    
+             in Inhomogenous (\p -> toPhaseFunction . weighPhaseFunctions $ zip (sigmasat p) (phisat p))
           
-  -- evaluates a texture of type a at a specific point
-  evaluatedAt :: Texture a -> Point -> a
-  evaluatedAt   (Homogenous x) _ = x
-  evaluatedAt (Inhomogenous f) p = f p
-  {-# INLINE evaluatedAt #-}
-
   -- Material contains local absorption and scattering properties
   data Material = Material (Texture Double) (Texture Double) (Texture PhaseFunction)
   materialTexturedAbsorption    (Material kappatex        _      _) = kappatex
@@ -199,13 +251,20 @@ module Main where
     show (Material kappatex sigmatex phitex) =  "kappa="++(show kappatex)++
                                                ", sigma="++(show sigmatex)++
                                                ", phi="++(show phitex)
-
+                                               
+  instance Monoid Material where
+    mempty = Material mempty mempty (Homogenous Isotropic)
+    {-# INLINE mempty #-}
+    mappend m1 m2 = undefined --boilDownMaterials [m1,m2] -- if mappend is used in a fold it would get the weights wrong, Material should use WeightedPhaseFunction to solve this
+    mconcat ms = boilDownMaterials ms
+    {-# INLINE mconcat #-}
+                                               
   boilDownMaterials :: [Material] -> Material
   boilDownMaterials materials = 
     let kappatextures = map materialTexturedAbsorption materials
-        summedkappa = foldl addTexturedDoubles (Homogenous 0) kappatextures
+        summedkappa = mconcat kappatextures
         sigmatextures = map materialTexturedScattering materials
-        summedsigma = foldl addTexturedDoubles (Homogenous 0) sigmatextures
+        summedsigma = mconcat sigmatextures
         phitextures = map materialTexturedPhaseFunction materials
         summedphi = addTexturedPhaseFunctions $ zip sigmatextures phitextures
     in Material summedkappa summedsigma summedphi
@@ -215,7 +274,7 @@ module Main where
   summedMaterialAt entities point = boiledMaterial
     where
       relevantEntities = filter ((`contains` point).entityContainer) entities
-      boiledMaterial = boilDownMaterials.concat $ map entityMaterials relevantEntities
+      boiledMaterial = mconcat . concatMap entityMaterials $ relevantEntities
   {-# INLINE summedMaterialAt #-}
 
   propertyAt :: (Material->Texture a) -> [Entity] -> Point -> a
