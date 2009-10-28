@@ -1,11 +1,11 @@
 {-# LANGUAGE BangPatterns #-}
 {-# LANGUAGE ExistentialQuantification #-}
 {-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE TypeSynonymInstances #-}
 
 module Main where
-
   import Data.Vector
   import Data.Maybe
   import Data.Monoid
@@ -62,23 +62,28 @@ module Main where
   instance Show Container where
     show (Container c) = show c
   
-  -- Containers should be able to do the following: 
-  class Confineable a where
-    contains      :: a -> Point -> Bool
-    intersectedBy :: a -> Ray -> [Interval]
-    randomPointIn :: a -> Gen s -> ST s Point
+  -- objects of type a from which we can draw samples of type b
+  class Sampleable a b where
+    probabilityDensityOf :: a -> b -> Double
+    randomSampleFrom     :: a -> Gen s -> ST s b
 
+  -- Containers should be able to do the following: 
+  class (Sampleable c Point) => Confineable c where
+    contains      :: c -> Point -> Bool
+    intersectedBy :: c -> Ray -> [Interval]
+
+  instance Sampleable Container Point where
+    probabilityDensityOf (Container c) point = probabilityDensityOf c point
+    {-# INLINE probabilityDensityOf #-}
+    randomSampleFrom     (Container c)     g = randomSampleFrom c g
+    {-# INLINE randomSampleFrom #-}
+    
   instance Confineable Container where
     contains      (Container c) = contains c
     {-# INLINE contains #-}
-
     intersectedBy (Container c) = intersectedBy c
     {-# INLINE intersectedBy #-}
-
-    randomPointIn (Container c) = randomPointIn c
-    {-# INLINE randomPointIn #-}
-  
-
+    
   -- Sphere
   data Sphere = Sphere {
       center :: Point,
@@ -87,6 +92,15 @@ module Main where
   instance Show Sphere where
     show (Sphere c r) = "Sphere at " ++ (showVector3 c) ++ " with Radius " ++ (show r)
 
+  instance Sampleable Sphere Point where
+    probabilityDensityOf s@(Sphere center radius) p
+      | not (s `contains` p) = 0
+      | otherwise            = 3 / (4*pi*(radius^3))
+    randomSampleFrom     (Sphere center radius) g =  do
+      unitpoint <- randomPointInUnitSphere g
+      return $ center + radius *<> unitpoint
+    {-# INLINE randomSampleFrom #-}
+    
   -- Sphere implements the Confineable type class functions
   instance Confineable Sphere where
     contains (Sphere c r) p = normsq (p - c) <= r*r
@@ -107,16 +121,6 @@ module Main where
                              alpha0 + alphadelta)
                in [alphas]
   
-    randomPointIn (Sphere center radius) g = do
-      unitpoint <- randomPointInUnitSphere g
-      return $ center + radius *<> unitpoint
-    {-# INLINE randomPointIn #-}
-  
-  -- objects of type a from which we can draw samples of type b
-  class Sampleable a b where
-    probabilityDensityOf :: a -> b -> Double
-    randomSampleFrom     :: a -> Gen s -> ST s b
-    
   -- PhaseFunction determines the Direction-dependent scattering probability
   data PhaseFunction = Isotropic
                      | Anisotropic (Direction->Direction->Double)
@@ -519,7 +523,7 @@ module Main where
   randomPointInEntities entities g = do
     entity <- randomChoice entities g
     let container = entityContainer entity
-    randomPointIn container g
+    randomSampleFrom container g
   
   randomPathOfLength scene n g = do
     let entities = sceneEntities scene
