@@ -20,6 +20,9 @@ module PIRaTE.PhaseFunction where
     show (Anisotropic _) = "Anisotropic"
 
   newtype WeightedPhaseFunction = WeightedPhaseFunction (Double,PhaseFunction)
+  
+  instance Show WeightedPhaseFunction where
+    show (WeightedPhaseFunction (weight,phasefunction)) = show phasefunction ++ "with weight: " ++ show weight
 
   fromPhaseFunction :: PhaseFunction -> WeightedPhaseFunction
   fromPhaseFunction pf = WeightedPhaseFunction (1,pf)
@@ -42,4 +45,3 @@ module PIRaTE.PhaseFunction where
   instance Monoid WeightedPhaseFunction where
     mempty = WeightedPhaseFunction (0,Isotropic)
     mappend = addWeightedPhaseFunctions
-  

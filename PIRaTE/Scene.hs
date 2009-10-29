@@ -44,7 +44,7 @@ module PIRaTE.Scene where
   extinctionAt = propertyAt materialTexturedExtinction
   {-# INLINE extinctionAt #-}
 
-  phaseFunctionAt :: [Entity] -> Point -> PhaseFunction
+  phaseFunctionAt :: [Entity] -> Point -> WeightedPhaseFunction
   phaseFunctionAt = propertyAt materialTexturedPhaseFunction
   {-# INLINE phaseFunctionAt #-}
   
@@ -127,7 +127,7 @@ module PIRaTE.Scene where
       intervalmaterialindices = map (S.toList . snd) taggeddisjointintervals
       entitymateriallists = map entityMaterials entities
       intervalmaterials = [concatMap (entitymateriallists!!) materialindices | materialindices<-intervalmaterialindices]
-      condensedintervalmaterials = map boilDownMaterials intervalmaterials
+      condensedintervalmaterials = map mconcat intervalmaterials
       disjointintervals = fst $ unzip taggeddisjointintervals
       refinedintervalswithmaterials = zip disjointintervals condensedintervalmaterials
     in refinedintervalswithmaterials
