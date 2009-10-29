@@ -11,7 +11,7 @@ module Main where
   import PIRaTE.Container.Sphere (Sphere(..))
   import PIRaTE.PhaseFunction (PhaseFunction(..))
   import PIRaTE.Texture (Texture(..))
-  import PIRaTE.Material (Material(..))
+  import PIRaTE.Material (toHomogenousMaterial)
   import PIRaTE.Scene (Entity(..),Scene(..))
   import PIRaTE.MCMC (mltAction)
   import PIRaTE.Mutation (
@@ -24,14 +24,14 @@ module Main where
 
   -- test-stuff
 
-  testEntities = let cont1 = Container (Sphere (Vector3 0.3 0 0) 0.5)
+  testEntities = let cont1 = Container $ Sphere (Vector3 0.3 0 0) 0.5
                      cont2 = Container $ Sphere (Vector3 (-0.5) 0 0) 0.3
                      cont3 = Container $ Sphere (Vector3 0.2 0.1 0.15) 0.1
                      cont4 = Container $ Sphere (Vector3 (-0.35) (-0.7) 0.0) 0.25
-                     mat1 = Material (Homogenous  3.0) (Homogenous  4.0) (Homogenous Isotropic)
-                     mat2 = Material (Homogenous  0.0) (Homogenous  7.0) (Homogenous Isotropic)
-                     mat3 = Material (Homogenous 40.0) (Homogenous  0.0) (Homogenous Isotropic)
-                     mat4 = Material (Homogenous  0.0) (Homogenous 40.0) (Homogenous Isotropic)
+                     mat1 = toHomogenousMaterial  3  4 Isotropic
+                     mat2 = toHomogenousMaterial  0  7 Isotropic
+                     mat3 = toHomogenousMaterial 40  0 Isotropic
+                     mat4 = toHomogenousMaterial  0 40 Isotropic
                      ent1 = Entity cont1 [mat1]
                      ent2 = Entity cont2 [mat2]
                      ent3 = Entity cont3 [mat3]
@@ -43,7 +43,7 @@ module Main where
   
   standardScene sigma = let
       container = Container $ Sphere (Vector3 0 0 0) 1
-      material = Material (Homogenous 0) (Homogenous sigma) (Homogenous Isotropic)
+      material = toHomogenousMaterial 0 sigma Isotropic
       entities = [Entity container [material]]
     in Scene [] entities
   

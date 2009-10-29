@@ -1,4 +1,12 @@
-module PIRaTE.Material where
+module PIRaTE.Material (
+    Material,
+    toHomogenousMaterial,
+    materialTexturedAbsorption,
+    materialTexturedScattering,
+    materialTexturedExtinction,
+    materialTexturedPhaseFunction,
+    boilDownMaterials
+  ) where
   import Data.Monoid
   import PIRaTE.SpatialTypes
   import PIRaTE.Texture
@@ -6,6 +14,11 @@ module PIRaTE.Material where
   
   -- Material contains local absorption and scattering properties
   data Material = Material (Texture Double) (Texture Double) (Texture PhaseFunction)
+
+  toHomogenousMaterial :: Double -> Double -> PhaseFunction -> Material
+  toHomogenousMaterial kappa sigma pf = Material (Homogenous kappa) (Homogenous sigma) (Homogenous  pf)
+  -- $ fromPhaseFunction
+
   materialTexturedAbsorption    (Material kappatex        _      _) = kappatex
   materialTexturedScattering    (Material        _ sigmatex      _) = sigmatex
   materialTexturedExtinction    (Material kappatex sigmatex      _) = addTexturedDoubles kappatex sigmatex
