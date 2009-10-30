@@ -12,7 +12,9 @@ module PIRaTE.MCMC where
   -- metropolis stuff
   --
   
-  metropolisStep :: Scene -> [(Double,Mutation)] -> MLTState -> Gen s -> ST s MLTState
+  type MutationList = [(Mutation,Double)]
+  
+  metropolisStep :: Scene -> MutationList -> MLTState -> Gen s -> ST s MLTState
   metropolisStep scene mutations oldstate g = do
     mutation <- randomWeightedChoice mutations g
     newstate <- mutateWith mutation scene oldstate g
@@ -24,7 +26,7 @@ module PIRaTE.MCMC where
                 then return newstate
                 else return oldstate
 
-  nMLTSteps :: Scene -> [(Double,Mutation)] -> Int -> MLTState -> Gen s -> ST s [MLTState]
+  nMLTSteps :: Scene -> MutationList -> Int -> MLTState -> Gen s -> ST s [MLTState]
   nMLTSteps scene mutations n initialstate g
     | n==1      = return [initialstate]
     | otherwise = do
@@ -32,7 +34,7 @@ module PIRaTE.MCMC where
         futureresults <- nMLTSteps scene mutations (n-1) newpath g
         return (initialstate:futureresults)
 
-  mltActionStep :: Scene -> [(Double,Mutation)] -> (MLTState -> a) -> Int -> (Seed,MLTState) -> ((Seed,MLTState),[a])
+  mltActionStep :: Scene -> MutationList -> (MLTState -> a) -> Int -> (Seed,MLTState) -> ((Seed,MLTState),[a])
   mltActionStep scene mutations extractor n (seed,initialpath) = runST $ do
     g <- restore seed
     states <- nMLTSteps scene
@@ -43,7 +45,7 @@ module PIRaTE.MCMC where
     g' <- save g
     return ((g',last states), map extractor states)
   
-  mltAction :: Scene -> [(Double,Mutation)] -> (MLTState -> a) -> Int -> Int -> Int -> [a]
+  mltAction :: Scene -> MutationList -> (MLTState -> a) -> Int -> Int -> Int -> [a]
   mltAction scene mutations extractor seedint n chunksize =
     let ipl = 1 -- initial path length
         (seed,initialpath) = runST $ do

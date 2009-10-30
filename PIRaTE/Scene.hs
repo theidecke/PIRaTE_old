@@ -88,23 +88,22 @@ module PIRaTE.Scene where
   -- endpoints into a list of disjoint intervals with taglist
   cutOverlaps :: (Ord a) => [IntervalLimiter a] -> [(Interval,S.Set a)]
   cutOverlaps limiters = cutOverlaps' S.empty sortedLimiters
-                         where sortedLimiters = L.sort limiters
-  
-  cutOverlaps' :: (Ord a) => (S.Set a) -> [IntervalLimiter a] -> [(Interval, S.Set a)]
-  cutOverlaps' active         [] = []
-  cutOverlaps' active (l1:l2:ls)
-    | l1==l2    = rest
-    | otherwise = ((intervalLimiterPosition l1,
-                    intervalLimiterPosition l2), newactive):rest
-    where getNewActive (IntervalLimiter key isbegin _)
-            | isbegin   = S.insert key active
-            | otherwise = S.delete key active
-          --getNewActive (IntervalLimiter key isbegin _) =
-          --  (if isbegin then S.insert else S.delete) key active
-          newactive = getNewActive l1
-          rest = cutOverlaps' newactive (l2:ls)
-  cutOverlaps' active ((IntervalLimiter _ isbegin _):[]) =
-    if isbegin then error "last intervallimiter shouldn't be a begin" else []  
+    where sortedLimiters = L.sort limiters
+          cutOverlaps' :: (Ord a) => (S.Set a) -> [IntervalLimiter a] -> [(Interval, S.Set a)]
+          cutOverlaps' active         [] = []
+          cutOverlaps' active (l1:l2:ls)
+            | l1==l2    = rest
+            | otherwise = ((intervalLimiterPosition l1,
+                            intervalLimiterPosition l2), newactive):rest
+            where getNewActive (IntervalLimiter key isbegin _)
+                    | isbegin   = S.insert key active
+                    | otherwise = S.delete key active
+                  --getNewActive (IntervalLimiter key isbegin _) =
+                  --  (if isbegin then S.insert else S.delete) key active
+                  newactive = getNewActive l1
+                  rest = cutOverlaps' newactive (l2:ls)
+          cutOverlaps' active ((IntervalLimiter _ isbegin _):[]) =
+            if isbegin then error "last intervallimiter shouldn't be a begin" else []  
   
   {--
   cutoverlapstestcase = concat.map (uncurry fromInterval) $

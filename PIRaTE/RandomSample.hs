@@ -70,12 +70,12 @@ module PIRaTE.RandomSample where
     rndindex <- randomListIndex choices g
     return $ choices!!rndindex
     
-  randomWeightedChoice :: [(Double,a)] -> Gen s -> ST s a
+  randomWeightedChoice :: [(a,Double)] -> Gen s -> ST s a
   randomWeightedChoice weightedchoices g = do
-    let (weights,_) = unzip weightedchoices
+    let weights = snd $ unzip weightedchoices
         totalweight = sum weights
-        step ((     _,choice):[])  _ = choice
-        step ((weight,choice):wcs) remainingweight
+        step ((choice,     _):[])  _ = choice
+        step ((choice,weight):wcs) remainingweight
           | remainingweight > weight = step wcs (remainingweight-weight)
           | otherwise = choice
     u1 <- uniform g

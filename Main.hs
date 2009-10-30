@@ -1,7 +1,7 @@
 module Main where
   import Data.Vector (Vector3(..),v3x,v3y)
+  import qualified Data.WeighedSet as WS
   import qualified Data.List as L (intersperse,foldl')
-  import qualified Data.Map as M
   import System.Environment
   import Text.Printf
   import PIRaTE.SpatialTypes
@@ -69,16 +69,10 @@ module Main where
       coordsToGridIndex :: Int -> (Double,Double) -> (Int,Int)
       coordsToGridIndex n point = pairMap (\x -> truncate $ (fromIntegral n)*x) point
 
-      incBin :: M.Map (Int,Int) Int -> (Int,Int) -> M.Map (Int,Int) Int
-      incBin oldmap index = M.insertWith' (+) index 1 oldmap
-
-      getBinCount :: M.Map (Int,Int) Int -> (Int,Int) -> Int
-      getBinCount fullbins index = M.findWithDefault 0 index fullbins
-      
-      emptybins = M.empty
+      emptybins = WS.empty
       sampleindices = map (coordsToGridIndex n) (toUnitSquare samples)
-      fullbins = L.foldl' incBin emptybins sampleindices
-    in map (map $ getBinCount fullbins) (gridIndices n)
+      fullbins = L.foldl' WS.increaseWeight emptybins sampleindices
+    in map (map $ round.(WS.weightOf fullbins)) (gridIndices n)
   
   binSamplesRadially :: [(Double,Double)] -> Int -> [Int]
   binSamplesRadially samples n = let
@@ -91,16 +85,10 @@ module Main where
       centerDistanceToBinIndex :: Int -> Double -> Int
       centerDistanceToBinIndex n distance = truncate $ (fromIntegral n)*distance
 
-      incBin :: M.Map Int Int -> Int -> M.Map Int Int
-      incBin oldmap index = M.insertWith' (+) index 1 oldmap
-
-      getBinCount :: M.Map Int Int -> Int -> Int
-      getBinCount fullbins index = M.findWithDefault 0 index fullbins
-
-      emptybins = M.empty
+      emptybins = WS.empty
       sampleindices = map (centerDistanceToBinIndex n) (toCenterDistance samples)
-      fullbins = L.foldl' incBin emptybins sampleindices
-    in map (getBinCount fullbins) (gridIndices n)
+      fullbins = L.foldl' WS.increaseWeight emptybins sampleindices
+    in map (round . (WS.weightOf fullbins)) (gridIndices n)
   
   putGridBinnedPhotonCounts gridsize samples = do
     let photonbincounts = binSamplesInGrid samples gridsize
@@ -114,9 +102,9 @@ module Main where
     
   main = do
     [gridsize,n] <- map read `fmap` getArgs
-    let mutations = [(3,Mutation $ ExponentialNodeTranslation 0.1),
-                     (4,Mutation $ ExponentialImageNodeTranslation 0.3),
-                     (3,Mutation $ IncDecPathLength 0.1)]
+    let mutations = [(Mutation $ ExponentialNodeTranslation 0.1      , 3),
+                     (Mutation $ ExponentialImageNodeTranslation 0.3 , 4),
+                     (Mutation $ IncDecPathLength 0.1                , 3)]
         extractor = (\v -> (v3x v, v3y v)) . last
         --extractor = (subtract 1).length.finalizePath
         chunksize = min 2500 n
