@@ -9,11 +9,12 @@ module PIRaTE.RandomSample where
   import Statistics.Distribution (quantile)
   import Statistics.Distribution.Exponential (fromLambda)
   import Data.Vector (Vector3(..),(*<>))
+  import qualified Data.WeighedSet as WS
   import PIRaTE.SpatialTypes
   import PIRaTE.UtilityFunctions (normsq)
   import PIRaTE.Confineable
   import PIRaTE.Container
-  import PIRaTE.PhaseFunction (PhaseFunction(..),WeightedPhaseFunction(..),scatterPDF)
+  import PIRaTE.PhaseFunction (PhaseFunction(..),WeightedPhaseFunction(..),scatterPDF,ipfPairForm)
   import PIRaTE.Scene (entityContainer,sceneEntities)
   import PIRaTE.Sampleable
   --
@@ -38,11 +39,21 @@ module PIRaTE.RandomSample where
     {-# INLINE probabilityDensityOf #-}
     randomSampleFrom     (pf,win)    g = randomDirectionFrom pf win g
     {-# INLINE randomSampleFrom #-}
-  
+
   instance Sampleable (WeightedPhaseFunction,Direction) Direction where
-    probabilityDensityOf (WeightedPhaseFunction (w,pf),win) wout = (probabilityDensityOf (pf,win) wout)/w
-    randomSampleFrom     (WeightedPhaseFunction (_,      Isotropic),  _) g = randomIsotropicDirection g
-    randomSampleFrom     (WeightedPhaseFunction (w,Anisotropic phi),win) g = undefined
+    probabilityDensityOf (wpf,win) wout = let
+        step ipf w (tp,tw) = (tp',tw')
+          where tp' = tp + (probabilityDensityOf (pf,win) wout)
+                tw' = tw + w
+                pf  = snd . ipfPairForm $ ipf
+        (totalprob,totalweight) = WS.foldWithKey step (0,0) wpf
+      in if totalweight>0
+        then totalprob / totalweight
+        else 0
+    randomSampleFrom     (wpf,win) g = do
+      indexedphasefunction <- randomWeightedChoice (WS.toWeightList wpf) g
+      let pf = snd . ipfPairForm $ indexedphasefunction
+      randomSampleFrom (pf,win) g
     {-# INLINE randomSampleFrom #-}
     
   startSeed = runST $ create >>= save

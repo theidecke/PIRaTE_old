@@ -1,10 +1,13 @@
 {-# LANGUAGE TypeSynonymInstances #-}
 
 module Data.WeighedSet (
+    WeighedSet,
     show,
     fromWeightList,
     toWeightList,
     empty,
+    singleton,
+    foldWithKey,
     mempty,
     mappend,
     mconcat,
@@ -12,7 +15,7 @@ module Data.WeighedSet (
     increaseWeight,
     weightOf
   ) where
-  import qualified Data.Map as M (Map,empty,insertWith',findWithDefault,unionWith,unionsWith,assocs,fromList)
+  import qualified Data.Map as M (Map,empty,insertWith',findWithDefault,unionWith,unionsWith,assocs,fromList,foldWithKey)
   import Data.Monoid
   
   newtype WeighedSet a = WeighedSet (M.Map a Double)
@@ -30,10 +33,16 @@ module Data.WeighedSet (
   
   empty = WeighedSet M.empty
   
+  singleton :: (Ord a) => a -> WeighedSet a
+  singleton x = increaseWeight empty x
+  
+  foldWithKey :: (Ord k) => (k->Double->a->a) -> a -> (WeighedSet k) -> a
+  foldWithKey f x0 ws = M.foldWithKey f x0 (unwrap ws)
+  
   instance (Ord a) => Monoid (WeighedSet a) where
     mempty = empty
     mappend ws1 ws2 = WeighedSet $ M.unionWith (+) (unwrap ws1) (unwrap ws2)
-    mconcat wss = WeighedSet $ M.unionsWith (+) (map unwrap wss)
+    mconcat = WeighedSet . M.unionsWith (+) . map unwrap
     
   increaseWeightBy :: (Ord a) => Double -> (WeighedSet a) -> a -> (WeighedSet a)
   increaseWeightBy inc ws index = WeighedSet $ M.insertWith' (+) index inc (unwrap ws)

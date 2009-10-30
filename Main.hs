@@ -28,10 +28,10 @@ module Main where
                      cont2 = Container $ Sphere (Vector3 (-0.5) 0 0) 0.3
                      cont3 = Container $ Sphere (Vector3 0.2 0.1 0.15) 0.1
                      cont4 = Container $ Sphere (Vector3 (-0.35) (-0.7) 0.0) 0.25
-                     mat1 = toHomogenousMaterial  3  4 Isotropic
-                     mat2 = toHomogenousMaterial  0  7 Isotropic
-                     mat3 = toHomogenousMaterial 40  0 Isotropic
-                     mat4 = toHomogenousMaterial  0 40 Isotropic
+                     mat1 = toHomogenousMaterial  3  4 (1,Isotropic)
+                     mat2 = toHomogenousMaterial  0  7 (1,Isotropic)
+                     mat3 = toHomogenousMaterial 40  0 (1,Isotropic)
+                     mat4 = toHomogenousMaterial  0 40 (1,Isotropic)
                      ent1 = Entity cont1 [mat1]
                      ent2 = Entity cont2 [mat2]
                      ent3 = Entity cont3 [mat3]
@@ -43,7 +43,7 @@ module Main where
   
   standardScene sigma = let
       container = Container $ Sphere (Vector3 0 0 0) 1
-      material = toHomogenousMaterial 0 sigma Isotropic
+      material = toHomogenousMaterial 0 sigma (1,Isotropic)
       entities = [Entity container [material]]
     in Scene [] entities
   
@@ -72,7 +72,7 @@ module Main where
       emptybins = WS.empty
       sampleindices = map (coordsToGridIndex n) (toUnitSquare samples)
       fullbins = L.foldl' WS.increaseWeight emptybins sampleindices
-    in map (map $ round.(WS.weightOf fullbins)) (gridIndices n)
+    in map (map $ round . WS.weightOf fullbins) (gridIndices n)
   
   binSamplesRadially :: [(Double,Double)] -> Int -> [Int]
   binSamplesRadially samples n = let
@@ -88,7 +88,7 @@ module Main where
       emptybins = WS.empty
       sampleindices = map (centerDistanceToBinIndex n) (toCenterDistance samples)
       fullbins = L.foldl' WS.increaseWeight emptybins sampleindices
-    in map (round . (WS.weightOf fullbins)) (gridIndices n)
+    in map (round . WS.weightOf fullbins) (gridIndices n)
   
   putGridBinnedPhotonCounts gridsize samples = do
     let photonbincounts = binSamplesInGrid samples gridsize
