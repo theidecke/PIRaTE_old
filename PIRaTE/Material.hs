@@ -34,7 +34,9 @@ module PIRaTE.Material (
 
   instance Monoid Double where
     mempty = 0
+    {-# INLINE mempty #-}
     mappend = (+)
+    {-# INLINE mappend #-}
 
   instance Monoid Material where
     mempty = Material mempty mempty mempty

@@ -15,17 +15,18 @@ module PIRaTE.Path where
   finalizePath :: Path -> Path
   finalizePath = addSensorNode . addLightSourceNode
   
-  measurementContribution (Scene lightsources entities) path = if null path
-    then 0
-    else let scattercrosssections = map (entities `scatteringAt`) path
-         in if any (==0) scattercrosssections
-              then 0
-              else let scatterfactor = product $ map (*(1/(4*pi))) scattercrosssections
-                       completepath = finalizePath path
-                       opticaldepth = sum $ edgeMap (opticalDepthBetween entities) completepath
-                       edges = edgeMap (-) completepath
-                       geometricfactors = product $ map normsq (init edges)
-                   in scatterfactor * exp (-opticaldepth) / geometricfactors
+  measurementContribution :: Scene -> Path -> Double
+  measurementContribution                             _   [] = 0
+  measurementContribution (Scene lightsources entities) path =
+    let scattercrosssections = map (entities `scatteringAt`) path
+    in if any (==0) scattercrosssections
+         then 0
+         else let scatterfactor = product $ map (*(1/(4*pi))) scattercrosssections
+                  completepath = finalizePath path
+                  opticaldepth = sum $ edgeMap (opticalDepthBetween entities) completepath
+                  edges = edgeMap (-) completepath
+                  geometricfactors = product $ map normsq (init edges)
+              in scatterfactor * exp (-opticaldepth) / geometricfactors
                        
   
   edgeMap :: (a->a->b) -> [a] -> [b]

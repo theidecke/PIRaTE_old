@@ -1,6 +1,3 @@
---{-# LANGUAGE ExistentialQuantification #-}
---{-# LANGUAGE FlexibleContexts #-}
-
 module PIRaTE.Confineable where
   import PIRaTE.SpatialTypes
   

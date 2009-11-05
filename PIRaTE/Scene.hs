@@ -168,7 +168,7 @@ module PIRaTE.Scene where
       clippedintervals = clipAndFilterIntervalsWithMaterial maxDist refinedintervalswithtextures
     in consumeIntervals ray maxDepth 0 clippedintervals
             
-            
+  opticalDepthBetween :: [Entity] -> Point -> Point -> Double
   opticalDepthBetween entities v w = let
       infinity = 1/(0::Double)
       distance = vmag $ w - v
