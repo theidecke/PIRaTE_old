@@ -14,6 +14,11 @@ module PIRaTE.Texture where
     show   (Homogenous x) = show x
     show (Inhomogenous _) = "Inhomogenous"
 
+  instance (Eq a) => Eq (Texture a) where
+    (==) (Homogenous x1) (Homogenous x2) = (==) x1 x2
+    (==) _ _ = False
+    {-# INLINE (==) #-}
+
   isHomogenous (Homogenous _) = True
   isHomogenous _ = False
   {-# INLINE isHomogenous #-}

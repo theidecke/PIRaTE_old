@@ -17,7 +17,7 @@ module PIRaTE.Path where
   
   measurementContribution :: Scene -> Path -> Double
   measurementContribution                             _   [] = 0
-  measurementContribution (Scene lightsources entities) path =
+  measurementContribution (Scene entities) path =
     let scattercrosssections = map (entities `scatteringAt`) path
     in if any (==0) scattercrosssections
          then 0

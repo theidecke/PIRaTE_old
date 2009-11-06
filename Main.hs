@@ -11,7 +11,7 @@ module Main where
   import PIRaTE.Container.Sphere (Sphere(..))
   import PIRaTE.PhaseFunction (PhaseFunction(..))
   import PIRaTE.Texture (Texture(..))
-  import PIRaTE.Material (toHomogenousMaterial)
+  import PIRaTE.Material (toHomogenousInteractingMaterial)
   import PIRaTE.Scene (Entity(..),Scene(..))
   import PIRaTE.MCMC (mltAction)
   import PIRaTE.Mutation (
@@ -28,10 +28,10 @@ module Main where
                      cont2 = Container $ Sphere (Vector3 (-0.5) 0 0) 0.3
                      cont3 = Container $ Sphere (Vector3 0.2 0.1 0.15) 0.1
                      cont4 = Container $ Sphere (Vector3 (-0.35) (-0.7) 0.0) 0.25
-                     mat1 = toHomogenousMaterial  3  4 (1,Isotropic)
-                     mat2 = toHomogenousMaterial  0  7 (1,Isotropic)
-                     mat3 = toHomogenousMaterial 40  0 (1,Isotropic)
-                     mat4 = toHomogenousMaterial  0 40 (1,Isotropic)
+                     mat1 = toHomogenousInteractingMaterial  3  4 (1,Isotropic)
+                     mat2 = toHomogenousInteractingMaterial  0  7 (1,Isotropic)
+                     mat3 = toHomogenousInteractingMaterial 40  0 (1,Isotropic)
+                     mat4 = toHomogenousInteractingMaterial  0 40 (1,Isotropic)
                      ent1 = Entity cont1 [mat1]
                      ent2 = Entity cont2 [mat2]
                      ent3 = Entity cont3 [mat3]
@@ -39,13 +39,13 @@ module Main where
                  in [ent1,ent2,ent3,ent4]
 
   testRay = Ray (Vector3 0 0 0) $ normalize (Vector3 0 0 1)
-  testScene = Scene [] testEntities
+  testScene = Scene testEntities
   
   standardScene sigma = let
       container = Container $ Sphere (Vector3 0 0 0) 1
-      material = toHomogenousMaterial 0 sigma (1,Isotropic)
+      material = toHomogenousInteractingMaterial 0 sigma (1,Isotropic)
       entities = [Entity container [material]]
-    in Scene [] entities
+    in Scene entities
   
   
   showSample (x,y) = printf "{%f,%f}" x y

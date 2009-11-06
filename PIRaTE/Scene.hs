@@ -20,6 +20,18 @@ module PIRaTE.Scene where
     show (Entity container materials) = "Entity contained by a " ++ (show container) ++
                                         " filled with " ++ (show materials)
   
+  isLightsource :: Entity -> Bool
+  isLightsource (Entity _ materials) = any isEmitting materials
+  {-# INLINE isLightsource #-}
+  
+  isInteractor :: Entity -> Bool
+  isInteractor (Entity _ materials) = any isInteracting materials
+  {-# INLINE isInteractor #-}
+  
+  isSensor :: Entity -> Bool
+  isSensor (Entity _ materials) = any isSensing materials
+  {-# INLINE isSensor #-}
+  
   summedMaterialAt :: [Entity] -> Point -> Material
   summedMaterialAt entities point = boiledMaterial
     where
@@ -33,30 +45,39 @@ module PIRaTE.Scene where
   {-# INLINE propertyAt #-}
     
   absorptionAt :: [Entity] -> Point -> Double
-  absorptionAt = propertyAt materialTexturedAbsorption
+  absorptionAt = propertyAt materialAbsorption
   {-# INLINE absorptionAt #-}
     
   scatteringAt :: [Entity] -> Point -> Double
-  scatteringAt = propertyAt materialTexturedScattering
+  scatteringAt = propertyAt materialScattering
   {-# INLINE scatteringAt #-}
-  
+
   extinctionAt :: [Entity] -> Point -> Double
-  extinctionAt = propertyAt materialTexturedExtinction
+  extinctionAt = propertyAt materialExtinction
   {-# INLINE extinctionAt #-}
 
-  phaseFunctionAt :: [Entity] -> Point -> WeightedPhaseFunction
-  phaseFunctionAt = propertyAt materialTexturedPhaseFunction
-  {-# INLINE phaseFunctionAt #-}
-  
-  -- a Lightsource is a container filled with emitting material
-  data Lightsource = Lightsource {
-      lightsourceContainer::Container,
-      brightness::Texture Double
-    }
+  emissivityAt :: [Entity] -> Point -> Double
+  emissivityAt = propertyAt materialEmissivity
+  {-# INLINE emissivityAt #-}
 
-  -- a Scene contains all lightsources and entities
+  sensitivityAt :: [Entity] -> Point -> Double
+  sensitivityAt = propertyAt materialSensitivity
+  {-# INLINE sensitivityAt #-}
+
+  scatteringPhaseFunctionAt :: [Entity] -> Point -> WeightedPhaseFunction
+  scatteringPhaseFunctionAt = propertyAt materialScatteringPhaseFunction
+  {-# INLINE scatteringPhaseFunctionAt #-}
+
+  emissionDirectednessAt :: [Entity] -> Point -> WeightedPhaseFunction
+  emissionDirectednessAt = propertyAt materialEmissionDirectedness
+  {-# INLINE emissionDirectednessAt #-}
+
+  sensationDirectednessAt :: [Entity] -> Point -> WeightedPhaseFunction
+  sensationDirectednessAt = propertyAt materialSensationDirectedness
+  {-# INLINE sensationDirectednessAt #-}
+
+  -- a Scene contains all entities
   data Scene = Scene {
-      sceneLightsources::[Lightsource],
       sceneEntities::[Entity]
     }
     
@@ -148,31 +169,35 @@ module PIRaTE.Scene where
   getProbeResultDepth (MaxDistAtDepth depth) = depth
   {-# INLINE getProbeResultDepth #-}
   
-  consumeIntervals :: Ray -> Double -> Double -> [(Interval,Material)] -> ProbeResult
-  consumeIntervals ray maxDepth accumulatedDepth [] = MaxDistAtDepth accumulatedDepth
-  consumeIntervals ray maxDepth accumulatedDepth (((a,b), m):rest) = let
+  consumeIntervals :: (Material -> Texture Double) -> Ray -> Double -> Double -> [(Interval,Material)] -> ProbeResult
+  consumeIntervals propertyof ray maxDepth accumulatedDepth [] = MaxDistAtDepth accumulatedDepth
+  consumeIntervals propertyof ray maxDepth accumulatedDepth (((a,b), m):rest) = let
       remainingDepth = maxDepth - accumulatedDepth
       intervalLength = b - a
-      extinction = materialTexturedExtinction m `evaluatedAt` undefined -- only works for Homogenous Materials
-      intervalDepth = extinction * intervalLength
+      scalarvalue = propertyof m `evaluatedAt` undefined -- only works for Homogenous Materials
+      intervalDepth = scalarvalue * intervalLength
     in if remainingDepth > intervalDepth
-         then consumeIntervals ray maxDepth (accumulatedDepth + intervalDepth) rest
-         else let neededDist = remainingDepth / extinction
+         then consumeIntervals propertyof ray maxDepth (accumulatedDepth + intervalDepth) rest
+         else let neededDist = remainingDepth / scalarvalue
               in MaxDepthAtDistance (a+neededDist)
   
   -- casts a Ray through a list of entities until either a maximum optical depth
   -- or a maximum distance is reached
-  probeEntitiesWithRay :: [Entity] -> Ray -> Double -> Double -> ProbeResult
-  probeEntitiesWithRay entities ray maxDist maxDepth = let
+  probePropertyOfEntitiesWithRay :: (Material -> Texture Double) -> [Entity] -> Ray -> Double -> Double -> ProbeResult
+  probePropertyOfEntitiesWithRay propertyof entities ray maxDist maxDepth = let
       refinedintervalswithtextures = disjunctIntervalsWithCondensedMaterials entities ray
       clippedintervals = clipAndFilterIntervalsWithMaterial maxDist refinedintervalswithtextures
-    in consumeIntervals ray maxDepth 0 clippedintervals
-            
-  opticalDepthBetween :: [Entity] -> Point -> Point -> Double
-  opticalDepthBetween entities v w = let
+    in consumeIntervals propertyof ray maxDepth 0 clippedintervals
+  
+  depthOfBetween :: (Material -> Texture Double) -> [Entity] -> Point -> Point -> Double
+  depthOfBetween propertyof entities v w = let
       infinity = 1/(0::Double)
       distance = vmag $ w - v
       ray = Ray v ((1/distance)*<>(w-v))
-    in getProbeResultDepth $ probeEntitiesWithRay entities ray distance infinity
+    in getProbeResultDepth $ probePropertyOfEntitiesWithRay propertyof entities ray distance infinity
+            
+  opticalDepthBetween :: [Entity] -> Point -> Point -> Double
+  opticalDepthBetween = depthOfBetween materialExtinction
+  {-# INLINE opticalDepthBetween #-}
 
   

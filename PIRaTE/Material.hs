@@ -1,10 +1,17 @@
 module PIRaTE.Material (
     Material,
-    toHomogenousMaterial,
-    materialTexturedAbsorption,
-    materialTexturedScattering,
-    materialTexturedExtinction,
-    materialTexturedPhaseFunction,
+    toHomogenousInteractingMaterial,
+    materialAbsorption,
+    materialScattering,
+    materialExtinction,
+    materialScatteringPhaseFunction,
+    materialEmissivity,
+    materialEmissionDirectedness,
+    materialSensitivity,
+    materialSensationDirectedness,
+    isInteracting,
+    isEmitting,
+    isSensing
   ) where
   import Data.Monoid
   import qualified Data.WeighedSet as WS
@@ -13,24 +20,56 @@ module PIRaTE.Material (
   import PIRaTE.PhaseFunction
   
   -- Material contains local absorption and scattering properties
-  data Material = Material (Texture Double) (Texture Double) (Texture WeightedPhaseFunction)
+  data Material = Material {
+        materialAbsorption              :: Texture Double,
+        materialScattering              :: Texture Double,
+        materialScatteringPhaseFunction :: Texture WeightedPhaseFunction,
+        materialEmissivity              :: Texture Double,
+        materialEmissionDirectedness    :: Texture WeightedPhaseFunction,
+        materialSensitivity             :: Texture Double,
+        materialSensationDirectedness   :: Texture WeightedPhaseFunction
+    }
 
-  toHomogenousMaterial :: Double -> Double -> (Int,PhaseFunction) -> Material
-  toHomogenousMaterial kappa sigma (index,pf) = Material kappatex sigmatex pftex
+  materialExtinction :: Material -> Texture Double
+  materialExtinction m = (materialAbsorption m) `mappend` (materialScattering m)
+
+  isInteracting :: Material -> Bool
+  isInteracting m = not $ (materialExtinction m)==mempty
+  
+  isEmitting :: Material -> Bool
+  isEmitting m = not $ (materialEmissivity m)==mempty
+  
+  isSensing :: Material -> Bool
+  isSensing m = not $ (materialSensitivity m)==mempty
+
+  toHomogenousInteractingMaterial :: Double -> Double -> (Int,PhaseFunction) -> Material
+  toHomogenousInteractingMaterial kappa sigma ipf@(index,pf) =
+    Material kappatex sigmatex pftex mempty mempty mempty mempty
     where kappatex = Homogenous kappa
           sigmatex = Homogenous sigma
-          pftex = Homogenous $ WS.singleton ipf
-          ipf = IndexedPhaseFunction (index,pf)
+          pftex = Homogenous $ WS.singleton ipftex
+          ipftex = IndexedPhaseFunction ipf
 
-  materialTexturedAbsorption    (Material kappatex        _      _) = kappatex
-  materialTexturedScattering    (Material        _ sigmatex      _) = sigmatex
-  materialTexturedExtinction    (Material kappatex sigmatex      _) = kappatex `mappend` sigmatex
-  materialTexturedPhaseFunction (Material        _        _ phitex) = phitex
+  toHomogenousEmittingMaterial :: Double -> (Int,PhaseFunction) -> Material
+  toHomogenousEmittingMaterial epsilon ipf@(index,pf) =
+    Material mempty mempty mempty epsilontex pftex mempty mempty
+    where epsilontex = Homogenous epsilon
+          pftex = Homogenous $ WS.singleton ipftex
+          ipftex = IndexedPhaseFunction ipf
+          
+  toHomogenousSensingMaterial :: Double -> (Int,PhaseFunction) -> Material
+  toHomogenousSensingMaterial zeta ipf@(index,pf) =
+    Material mempty mempty mempty mempty mempty zetatex pftex
+    where zetatex = Homogenous zeta
+          pftex = Homogenous $ WS.singleton ipftex
+          ipftex = IndexedPhaseFunction ipf
 
   instance Show Material where
-    show (Material kappatex sigmatex phitex) =  "kappa="++(show kappatex)++
-                                               ", sigma="++(show sigmatex)++
-                                               ", phi="++(show phitex)
+    show m =  "kappa="    ++ show (materialAbsorption m) ++
+              ", sigma="  ++ show (materialScattering m) ++
+              ", phi="    ++ show (materialScatteringPhaseFunction m) ++
+              ", epsilon="++ show (materialEmissivity m) ++
+              ", zeta="   ++ show (materialSensitivity m)
 
   instance Monoid Double where
     mempty = 0
@@ -39,14 +78,19 @@ module PIRaTE.Material (
     {-# INLINE mappend #-}
 
   instance Monoid Material where
-    mempty = Material mempty mempty mempty
+    mempty = Material mempty mempty mempty mempty mempty mempty mempty
     {-# INLINE mempty #-}
     mappend = addTexturedMaterials
     {-# INLINE mappend #-}
 
-  addTexturedMaterials (Material k1 s1 wpf1) (Material k2 s2 wpf2) = let
-      k'   = k1 `mappend` k2
-      s'   = s1 `mappend` s2
-      wpf' = wpf1 `mappend` wpf2
-    in Material k' s' wpf'
+  addTexturedMaterials (Material kappa1 sigma1 scawpf1 epsilon1 emiwpf1 zeta1 senwpf1)
+                       (Material kappa2 sigma2 scawpf2 epsilon2 emiwpf2 zeta2 senwpf2) =
+    let kappa'   = kappa1 `mappend` kappa2
+        sigma'   = sigma1 `mappend` sigma2
+        scawpf'  = scawpf1 `mappend` scawpf1
+        epsilon' = epsilon1 `mappend` epsilon2
+        emiwpf'  = emiwpf1 `mappend` emiwpf2
+        zeta'    = zeta1 `mappend` zeta2
+        senwpf'  = senwpf1 `mappend` senwpf2
+    in Material kappa' sigma' scawpf' epsilon' emiwpf' zeta' senwpf'
   {-# INLINE addTexturedMaterials #-}
