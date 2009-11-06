@@ -4,19 +4,21 @@
 
 module PIRaTE.RandomSample where
   import Control.Monad
-  import Control.Monad.ST  
+  import Control.Monad.ST
+  import Data.Maybe (fromJust,fromMaybe)
   import Statistics.RandomVariate
   import Statistics.Distribution (quantile)
   import Statistics.Distribution.Exponential (fromLambda)
   import Data.Vector (Vector3(..),(*<>))
   import qualified Data.WeighedSet as WS
   import PIRaTE.SpatialTypes
-  import PIRaTE.UtilityFunctions (normsq)
+  import PIRaTE.UtilityFunctions (normsq,infinity)
   import PIRaTE.Confineable
   import PIRaTE.Container
   import PIRaTE.PhaseFunction (PhaseFunction(..),WeightedPhaseFunction(..),scatterPDF,ipfPairForm)
-  import PIRaTE.Scene (entityContainer,sceneEntities)
+  import PIRaTE.Scene
   import PIRaTE.Sampleable
+  
   --
   -- random-dependent stuff starts here!
   --
@@ -56,6 +58,24 @@ module PIRaTE.RandomSample where
       randomSampleFrom (pf,win) g
     {-# INLINE randomSampleFrom #-}
     
+  -- DistanceSampler
+  newtype UniformExtinctionDistanceSampleable = UniformExtinctionDistanceSampleable ([Entity],Ray)
+  instance Sampleable UniformExtinctionDistanceSampleable Double where
+    probabilityDensityOf (UniformExtinctionDistanceSampleable (interactors,(Ray origin direction))) distance =
+      let endpoint = origin + distance *<> direction
+          depth = opticalDepthBetween interactors origin endpoint
+          endpointxi = extinctionAt interactors endpoint
+      in endpointxi * (exp (-depth))
+    {-# INLINE probabilityDensityOf #-}
+    randomSampleFrom (UniformExtinctionDistanceSampleable (interactors,ray)) g = do
+      u1 <- uniform g
+      let depth = negate $ log (u1::Double)
+          proberesult = probeExtinctionWithRay interactors ray infinity depth
+      return . fromMaybe infinity $ getProbeResultDist proberesult
+    {-# INLINE randomSampleFrom #-}
+    
+    
+  
   startSeed = runST $ create >>= save
 
   -- generates a uniformly distributed random Int in the interval (a,b)

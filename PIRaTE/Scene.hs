@@ -1,6 +1,7 @@
 module PIRaTE.Scene where
   import Data.Vector ((*<>),vmag)
   import Data.Monoid
+  import Data.Maybe (fromMaybe,fromJust)
   import qualified Data.List as L
   import qualified Data.Set as S
   import PIRaTE.SpatialTypes
@@ -9,6 +10,7 @@ module PIRaTE.Scene where
   import PIRaTE.PhaseFunction
   import PIRaTE.Texture
   import PIRaTE.Material
+  import PIRaTE.UtilityFunctions (infinity)
   
   -- an Entity is a container filled with light-influencing material
   data Entity = Entity {
@@ -81,6 +83,15 @@ module PIRaTE.Scene where
       sceneEntities::[Entity]
     }
     
+  sceneLightsources :: Scene -> [Entity]
+  sceneLightsources = filter isLightsource . sceneEntities
+  
+  sceneInteractors :: Scene -> [Entity]
+  sceneInteractors = filter isInteractor . sceneEntities
+
+  sceneSensors :: Scene -> [Entity]
+  sceneSensors = filter isSensor . sceneEntities
+      
   -- the Bool is used to represent if the IntervalLimiter is the begin of an interval
   data IntervalLimiter a = IntervalLimiter {
       intervalLimiterKey::a,
@@ -166,8 +177,12 @@ module PIRaTE.Scene where
   
   
   data ProbeResult = MaxDepthAtDistance Double | MaxDistAtDepth Double deriving (Show)
-  getProbeResultDepth (MaxDistAtDepth depth) = depth
+  getProbeResultDepth (MaxDistAtDepth depth) = Just depth
+  getProbeResultDepth _ = Nothing
   {-# INLINE getProbeResultDepth #-}
+  getProbeResultDist (MaxDepthAtDistance distance) = Just distance
+  getProbeResultDist _ = Nothing
+  {-# INLINE getProbeResultDist #-}
   
   consumeIntervals :: (Material -> Texture Double) -> Ray -> Double -> Double -> [(Interval,Material)] -> ProbeResult
   consumeIntervals propertyof ray maxDepth accumulatedDepth [] = MaxDistAtDepth accumulatedDepth
@@ -191,11 +206,14 @@ module PIRaTE.Scene where
   
   depthOfBetween :: (Material -> Texture Double) -> [Entity] -> Point -> Point -> Double
   depthOfBetween propertyof entities v w = let
-      infinity = 1/(0::Double)
       distance = vmag $ w - v
       ray = Ray v ((1/distance)*<>(w-v))
-    in getProbeResultDepth $ probePropertyOfEntitiesWithRay propertyof entities ray distance infinity
-            
+      proberesult = probePropertyOfEntitiesWithRay propertyof entities ray distance infinity
+    in fromJust $ getProbeResultDepth proberesult
+
+  probeExtinctionWithRay :: [Entity] -> Ray -> Double -> Double -> ProbeResult
+  probeExtinctionWithRay = probePropertyOfEntitiesWithRay materialExtinction
+
   opticalDepthBetween :: [Entity] -> Point -> Point -> Double
   opticalDepthBetween = depthOfBetween materialExtinction
   {-# INLINE opticalDepthBetween #-}

@@ -11,4 +11,5 @@ module PIRaTE.UtilityFunctions where
   mapAt k f (x:xs)
     | k==0      = f x : xs
     | otherwise = x : mapAt (k-1) f xs
-    
+  
+  infinity = 1/(0::Double)
