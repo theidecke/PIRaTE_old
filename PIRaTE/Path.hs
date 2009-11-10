@@ -2,7 +2,7 @@ module PIRaTE.Path where
   import Data.Vector (Vector3(..))
   import PIRaTE.SpatialTypes
   import PIRaTE.UtilityFunctions (normsq)
-  import PIRaTE.Scene (Scene(..),scatteringAt,opticalDepthBetween)
+  import PIRaTE.Scene (Scene(..),scatteringAt,opticalDepthBetween,sceneInteractors)
   
   --
   -- path stuff
@@ -17,13 +17,14 @@ module PIRaTE.Path where
   
   measurementContribution :: Scene -> Path -> Double
   measurementContribution                             _   [] = 0
-  measurementContribution (Scene entities) path =
-    let scattercrosssections = map (entities `scatteringAt`) path
+  measurementContribution scene path =
+    let interactors = sceneInteractors scene
+        scattercrosssections = map (interactors `scatteringAt`) path
     in if any (==0) scattercrosssections
          then 0
          else let scatterfactor = product $ map (*(1/(4*pi))) scattercrosssections
                   completepath = finalizePath path
-                  opticaldepth = sum $ edgeMap (opticalDepthBetween entities) completepath
+                  opticaldepth = sum $ edgeMap (opticalDepthBetween interactors) completepath
                   edges = edgeMap (-) completepath
                   geometricfactors = product $ map normsq (init edges)
               in scatterfactor * exp (-opticaldepth) / geometricfactors
@@ -32,4 +33,5 @@ module PIRaTE.Path where
   edgeMap :: (a->a->b) -> [a] -> [b]
   edgeMap f     (a:[]) = []
   edgeMap f (a:b:rest) = f a b : edgeMap f (b:rest)
+  
   

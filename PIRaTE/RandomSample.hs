@@ -59,15 +59,15 @@ module PIRaTE.RandomSample where
     {-# INLINE randomSampleFrom #-}
     
   -- DistanceSampler
-  newtype UniformExtinctionDistanceSampleable = UniformExtinctionDistanceSampleable ([Entity],Ray)
-  instance Sampleable UniformExtinctionDistanceSampleable Double where
-    probabilityDensityOf (UniformExtinctionDistanceSampleable (interactors,(Ray origin direction))) distance =
+  newtype UniformAttenuationDistanceSampleable = UniformAttenuationDistanceSampleable ([Entity],Ray)
+  instance Sampleable UniformAttenuationDistanceSampleable Double where
+    probabilityDensityOf (UniformAttenuationDistanceSampleable (interactors,(Ray origin direction))) distance =
       let endpoint = origin + distance *<> direction
           depth = opticalDepthBetween interactors origin endpoint
           endpointxi = extinctionAt interactors endpoint
       in endpointxi * (exp (-depth))
     {-# INLINE probabilityDensityOf #-}
-    randomSampleFrom (UniformExtinctionDistanceSampleable (interactors,ray)) g = do
+    randomSampleFrom (UniformAttenuationDistanceSampleable (interactors,ray)) g = do
       u1 <- uniform g
       let depth = negate $ log (u1::Double)
           proberesult = probeExtinctionWithRay interactors ray infinity depth
