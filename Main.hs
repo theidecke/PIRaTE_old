@@ -11,6 +11,7 @@ module Main where
   import PIRaTE.Container.Sphere (Sphere(..))
   import PIRaTE.PhaseFunction (PhaseFunction(..))
   import PIRaTE.PhaseFunction.Isotropic (Isotropic(..))
+  import PIRaTE.PhaseFunction.ZCone (fromApexAngle)
   import PIRaTE.Texture (Texture(..))
   import PIRaTE.Material (toHomogenousInteractingMaterial)
   import PIRaTE.Scene (Entity(..),Scene(..))
