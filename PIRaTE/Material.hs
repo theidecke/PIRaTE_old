@@ -23,11 +23,11 @@ module PIRaTE.Material (
   data Material = Material {
         materialAbsorption              :: Texture Double,
         materialScattering              :: Texture Double,
-        materialScatteringPhaseFunction :: Texture WeightedPhaseFunction,
+        materialScatteringPhaseFunction :: WeightedPhaseFunction,
         materialEmissivity              :: Texture Double,
-        materialEmissionDirectedness    :: Texture WeightedPhaseFunction,
+        materialEmissionDirectedness    :: WeightedPhaseFunction,
         materialSensitivity             :: Texture Double,
-        materialSensationDirectedness   :: Texture WeightedPhaseFunction
+        materialSensationDirectedness   :: WeightedPhaseFunction
     }
 
   materialExtinction :: Material -> Texture Double
@@ -47,21 +47,21 @@ module PIRaTE.Material (
     Material kappatex sigmatex pftex mempty mempty mempty mempty
     where kappatex = Homogenous kappa
           sigmatex = Homogenous sigma
-          pftex = Homogenous $ WS.singleton ipftex
+          pftex = WS.singleton ipftex
           ipftex = IndexedPhaseFunction ipf
 
   toHomogenousEmittingMaterial :: Double -> (Int,PhaseFunction) -> Material
   toHomogenousEmittingMaterial epsilon ipf@(index,pf) =
     Material mempty mempty mempty epsilontex pftex mempty mempty
     where epsilontex = Homogenous epsilon
-          pftex = Homogenous $ WS.singleton ipftex
+          pftex = WS.singleton ipftex
           ipftex = IndexedPhaseFunction ipf
           
   toHomogenousSensingMaterial :: Double -> (Int,PhaseFunction) -> Material
   toHomogenousSensingMaterial zeta ipf@(index,pf) =
     Material mempty mempty mempty mempty mempty zetatex pftex
     where zetatex = Homogenous zeta
-          pftex = Homogenous $ WS.singleton ipftex
+          pftex = WS.singleton ipftex
           ipftex = IndexedPhaseFunction ipf
 
   instance Show Material where

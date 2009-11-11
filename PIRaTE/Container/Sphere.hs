@@ -23,7 +23,7 @@ module PIRaTE.Container.Sphere where
     contains (Sphere c r) p = normsq (p - c) <= r*r
     {-# INLINE contains #-}
 
-    intersectedBy (Sphere center radius) (Ray origin direction) = 
+    intersectedBy (Sphere center radius) (Ray origin (Direction direction)) = 
       let offset = origin - center
           oo = offset `vdot` offset
           od = offset `vdot` direction

@@ -3,8 +3,8 @@ module PIRaTE.MCMC where
   import Control.Monad.ST (ST,runST)
   import Statistics.RandomVariate (Gen,Seed,initialize,save,restore,uniform)
   import PIRaTE.SpatialTypes
-  import PIRaTE.RandomSample (randomPathOfLength,randomWeightedChoice)
-  import PIRaTE.Scene (Scene)
+  import PIRaTE.RandomSample (randomWeightedChoice)
+  import PIRaTE.Scene (Scene,randomPathOfLength)
   import PIRaTE.Path
   import PIRaTE.Mutation
 

@@ -1,9 +1,13 @@
+{-# LANGUAGE MultiParamTypeClasses #-}
+
 module PIRaTE.Scene where
   import Data.Vector ((*<>),vmag)
   import Data.Monoid
   import Data.Maybe (fromMaybe,fromJust)
   import qualified Data.List as L
   import qualified Data.Set as S
+  import Control.Monad.ST (ST)
+  import Control.Monad (replicateM)
   import PIRaTE.SpatialTypes
   import PIRaTE.Confineable
   import PIRaTE.Container
@@ -11,6 +15,9 @@ module PIRaTE.Scene where
   import PIRaTE.Texture
   import PIRaTE.Material
   import PIRaTE.UtilityFunctions (infinity)
+  import PIRaTE.Sampleable
+  import PIRaTE.RandomSample (randomChoice)
+  import Statistics.RandomVariate (Gen,uniform)
   
   -- an Entity is a container filled with light-influencing material
   data Entity = Entity {
@@ -21,6 +28,12 @@ module PIRaTE.Scene where
   instance Show Entity where
     show (Entity container materials) = "Entity contained by a " ++ (show container) ++
                                         " filled with " ++ (show materials)
+  
+  randomPointInEntities :: [Entity] -> Gen s -> ST s Point
+  randomPointInEntities entities g = do
+    entity <- randomChoice entities g
+    let container = entityContainer entity
+    randomSampleFrom container g
   
   isLightsource :: Entity -> Bool
   isLightsource (Entity _ materials) = any isEmitting materials
@@ -66,22 +79,14 @@ module PIRaTE.Scene where
   sensitivityAt = propertyAt materialSensitivity
   {-# INLINE sensitivityAt #-}
 
-  scatteringPhaseFunctionAt :: [Entity] -> Point -> WeightedPhaseFunction
-  scatteringPhaseFunctionAt = propertyAt materialScatteringPhaseFunction
-  {-# INLINE scatteringPhaseFunctionAt #-}
-
-  emissionDirectednessAt :: [Entity] -> Point -> WeightedPhaseFunction
-  emissionDirectednessAt = propertyAt materialEmissionDirectedness
-  {-# INLINE emissionDirectednessAt #-}
-
-  sensationDirectednessAt :: [Entity] -> Point -> WeightedPhaseFunction
-  sensationDirectednessAt = propertyAt materialSensationDirectedness
-  {-# INLINE sensationDirectednessAt #-}
-
   -- a Scene contains all entities
   data Scene = Scene {
       sceneEntities::[Entity]
     }
+
+  randomPathOfLength scene n g = do
+    let entities = sceneEntities scene
+    replicateM n $ randomPointInEntities entities g
     
   sceneLightsources :: Scene -> [Entity]
   sceneLightsources = filter isLightsource . sceneEntities
@@ -207,7 +212,7 @@ module PIRaTE.Scene where
   depthOfBetween :: (Material -> Texture Double) -> [Entity] -> Point -> Point -> Double
   depthOfBetween propertyof entities v w = let
       distance = vmag $ w - v
-      ray = Ray v ((1/distance)*<>(w-v))
+      ray = Ray v (Direction $ (1/distance)*<>(w-v))
       proberesult = probePropertyOfEntitiesWithRay propertyof entities ray distance infinity
     in fromJust $ getProbeResultDepth proberesult
 
@@ -218,4 +223,18 @@ module PIRaTE.Scene where
   opticalDepthBetween = depthOfBetween materialExtinction
   {-# INLINE opticalDepthBetween #-}
 
-  
+  -- DistanceSampler
+  newtype UniformExtinctionDistanceSampleable = UniformExtinctionDistanceSampleable ([Entity],Ray)
+  instance Sampleable UniformExtinctionDistanceSampleable Double where
+    probabilityDensityOf (UniformExtinctionDistanceSampleable (interactors,Ray origin (Direction direction))) distance =
+      let endpoint = origin + distance *<> direction
+          depth = opticalDepthBetween interactors origin endpoint
+          endpointxi = extinctionAt interactors endpoint
+      in endpointxi * (exp (-depth))
+    {-# INLINE probabilityDensityOf #-}
+    randomSampleFrom (UniformExtinctionDistanceSampleable (interactors,ray)) g = do
+      u1 <- uniform g
+      let depth = negate $ log (u1::Double)
+          proberesult = probeExtinctionWithRay interactors ray infinity depth
+      return . fromMaybe infinity $ getProbeResultDist proberesult
+    {-# INLINE randomSampleFrom #-}

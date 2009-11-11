@@ -10,6 +10,7 @@ module Main where
   import PIRaTE.Container (Container(..))
   import PIRaTE.Container.Sphere (Sphere(..))
   import PIRaTE.PhaseFunction (PhaseFunction(..))
+  import PIRaTE.PhaseFunction.Isotropic (Isotropic(..))
   import PIRaTE.Texture (Texture(..))
   import PIRaTE.Material (toHomogenousInteractingMaterial)
   import PIRaTE.Scene (Entity(..),Scene(..))
@@ -28,22 +29,22 @@ module Main where
                      cont2 = Container $ Sphere (Vector3 (-0.5) 0 0) 0.3
                      cont3 = Container $ Sphere (Vector3 0.2 0.1 0.15) 0.1
                      cont4 = Container $ Sphere (Vector3 (-0.35) (-0.7) 0.0) 0.25
-                     mat1 = toHomogenousInteractingMaterial  3  4 (1,Isotropic)
-                     mat2 = toHomogenousInteractingMaterial  0  7 (1,Isotropic)
-                     mat3 = toHomogenousInteractingMaterial 40  0 (1,Isotropic)
-                     mat4 = toHomogenousInteractingMaterial  0 40 (1,Isotropic)
+                     mat1 = toHomogenousInteractingMaterial  3  4 (1,PhaseFunction Isotropic)
+                     mat2 = toHomogenousInteractingMaterial  0  7 (1,PhaseFunction Isotropic)
+                     mat3 = toHomogenousInteractingMaterial 40  0 (1,PhaseFunction Isotropic)
+                     mat4 = toHomogenousInteractingMaterial  0 40 (1,PhaseFunction Isotropic)
                      ent1 = Entity cont1 [mat1]
                      ent2 = Entity cont2 [mat2]
                      ent3 = Entity cont3 [mat3]
                      ent4 = Entity cont4 [mat4]
                  in [ent1,ent2,ent3,ent4]
 
-  testRay = Ray (Vector3 0 0 0) $ normalize (Vector3 0 0 1)
+  testRay = Ray (Vector3 0 0 0) (Direction $ normalize (Vector3 0 0 1))
   testScene = Scene testEntities
   
   standardScene sigma = let
       container = Container $ Sphere (Vector3 0 0 0) 1
-      material = toHomogenousInteractingMaterial 0 sigma (1,Isotropic)
+      material = toHomogenousInteractingMaterial 0 sigma (1,PhaseFunction Isotropic)
       entities = [Entity container [material]]
     in Scene entities
   

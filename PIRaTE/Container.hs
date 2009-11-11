@@ -1,5 +1,7 @@
 {-# LANGUAGE ExistentialQuantification #-}
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE TypeSynonymInstances #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
 
 module PIRaTE.Container where
   import Data.Vector ((*<>),vdot)
@@ -20,3 +22,12 @@ module PIRaTE.Container where
     {-# INLINE contains #-}
     intersectedBy (Container c) = intersectedBy c
     {-# INLINE intersectedBy #-}
+
+  instance Sampleable Container Point where
+    --probabilityDensityOf :: (Sampleable a) => a -> Point -> Double
+    probabilityDensityOf (Container c) point = probabilityDensityOf c point
+    {-# INLINE probabilityDensityOf #-}
+    --randomSampleFrom :: (Sampleable a) => a -> Gen s -> ST s Point
+    randomSampleFrom     (Container c)     g = randomSampleFrom c g
+    {-# INLINE randomSampleFrom #-}
+    
