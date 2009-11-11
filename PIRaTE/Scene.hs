@@ -224,17 +224,52 @@ module PIRaTE.Scene where
   {-# INLINE opticalDepthBetween #-}
 
   -- DistanceSampler
-  newtype UniformExtinctionDistanceSampleable = UniformExtinctionDistanceSampleable ([Entity],Ray)
+  type DistanceSamplerParameters = ([Entity], Material -> Texture Double, Ray)
+  
+  newtype UniformExtinctionDistanceSampleable = UniformExtinctionDistanceSampleable DistanceSamplerParameters
   instance Sampleable UniformExtinctionDistanceSampleable Double where
-    probabilityDensityOf (UniformExtinctionDistanceSampleable (interactors,Ray origin (Direction direction))) distance =
+    probabilityDensityOf (UniformExtinctionDistanceSampleable (entities,
+                                                               materialproperty,
+                                                               Ray origin (Direction direction)
+                                                               ))
+                         distance =
       let endpoint = origin + distance *<> direction
-          depth = opticalDepthBetween interactors origin endpoint
-          endpointxi = extinctionAt interactors endpoint
-      in endpointxi * (exp (-depth))
-    {-# INLINE probabilityDensityOf #-}
-    randomSampleFrom (UniformExtinctionDistanceSampleable (interactors,ray)) g = do
+          depth = depthOfBetween materialproperty entities origin endpoint
+          endpointvalue = propertyAt materialproperty entities endpoint
+      in endpointvalue * (exp (-depth))
+
+    randomSampleFrom (UniformExtinctionDistanceSampleable (entities,materialproperty,ray)) g = do
       u1 <- uniform g
       let depth = negate $ log (u1::Double)
-          proberesult = probeExtinctionWithRay interactors ray infinity depth
+          proberesult = probePropertyOfEntitiesWithRay materialproperty entities ray infinity depth
       return . fromMaybe infinity $ getProbeResultDist proberesult
-    {-# INLINE randomSampleFrom #-}
+
+    
+
+  newtype UniformDepthDistanceSampleable = UniformDepthDistanceSampleable DistanceSamplerParameters
+  instance Sampleable UniformDepthDistanceSampleable Double where
+    probabilityDensityOf (UniformDepthDistanceSampleable (entities,
+                                                          materialproperty,
+                                                          ray@(Ray origin (Direction direction))
+                                                          ))
+                         distance =
+      if distance==infinity -- did we probe into the void?
+        then infinity -- dumb questions -> dumb answers
+        else let totaldepthproberesult = probePropertyOfEntitiesWithRay materialproperty entities ray infinity infinity
+                 totaldepth = fromJust $ getProbeResultDepth totaldepthproberesult
+                 endpoint = origin + distance *<> direction
+                 endpointvalue = propertyAt materialproperty entities endpoint
+             in endpointvalue / totaldepth
+             
+    randomSampleFrom (UniformDepthDistanceSampleable (entities,materialproperty,ray)) g = do
+      let probeToInfinity = probePropertyOfEntitiesWithRay materialproperty entities ray infinity
+          totaldepthproberesult = probeToInfinity infinity
+          totaldepth = fromJust $ getProbeResultDepth totaldepthproberesult
+      if totaldepth==0
+        then return infinity
+        else do u1 <- uniform g
+                let randomdepth = totaldepth * (u1::Double)
+                    proberesult = probeToInfinity randomdepth
+                return . fromMaybe infinity $ getProbeResultDist proberesult
+
+    
