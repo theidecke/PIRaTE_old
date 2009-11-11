@@ -11,7 +11,7 @@ module PIRaTE.PhaseFunction where
   
   -- PhaseFunction determines the Direction-dependent scattering probability
   data PhaseFunction = forall pf. (Sampleable (pf,Ray) Direction, Show pf) => PhaseFunction pf
-                     
+
   instance Show PhaseFunction where
     show (PhaseFunction pf) = show pf
 

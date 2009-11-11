@@ -8,7 +8,7 @@ module PIRaTE.Material (
     materialEmissivity,
     materialEmissionDirectedness,
     materialSensitivity,
-    materialSensationDirectedness,
+    materialSensor,
     isInteracting,
     isEmitting,
     isSensing
@@ -18,6 +18,7 @@ module PIRaTE.Material (
   import PIRaTE.SpatialTypes
   import PIRaTE.Texture
   import PIRaTE.PhaseFunction
+  import PIRaTE.Sensor
   
   -- Material contains local absorption and scattering properties
   data Material = Material {
@@ -27,7 +28,7 @@ module PIRaTE.Material (
         materialEmissivity              :: Texture Double,
         materialEmissionDirectedness    :: WeightedPhaseFunction,
         materialSensitivity             :: Texture Double,
-        materialSensationDirectedness   :: WeightedPhaseFunction
+        materialSensor                  :: WeightedSensor
     }
 
   materialExtinction :: Material -> Texture Double
@@ -57,12 +58,12 @@ module PIRaTE.Material (
           pftex = WS.singleton ipftex
           ipftex = IndexedPhaseFunction ipf
           
-  toHomogenousSensingMaterial :: Double -> (Int,PhaseFunction) -> Material
-  toHomogenousSensingMaterial zeta ipf@(index,pf) =
-    Material mempty mempty mempty mempty mempty zetatex pftex
+  toHomogenousSensingMaterial :: Double -> (Int,PhaseFunction,SensorLogger) -> Material
+  toHomogenousSensingMaterial zeta ist@(index,pf,sl) =
+    Material mempty mempty mempty mempty mempty zetatex wsens
     where zetatex = Homogenous zeta
-          pftex = WS.singleton ipftex
-          ipftex = IndexedPhaseFunction ipf
+          wsens = WS.singleton indexedsensor
+          indexedsensor = IndexedSensor ist -- indexed sensor triple
 
   instance Show Material where
     show m =  "kappa="    ++ show (materialAbsorption m) ++
