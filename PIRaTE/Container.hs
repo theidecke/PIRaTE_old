@@ -24,9 +24,9 @@ module PIRaTE.Container where
     {-# INLINE intersectedBy #-}
 
   instance Sampleable Container Point where
-    --probabilityDensityOf :: (Sampleable a) => a -> Point -> Double
-    probabilityDensityOf (Container c) point = probabilityDensityOf c point
-    {-# INLINE probabilityDensityOf #-}
+    --sampleProbabilityOf :: (Sampleable a) => a -> Point -> Double
+    sampleProbabilityOf (Container c) point = sampleProbabilityOf c point
+    {-# INLINE sampleProbabilityOf #-}
     --randomSampleFrom :: (Sampleable a) => a -> Gen s -> ST s Point
     randomSampleFrom     (Container c)     g = randomSampleFrom c g
     {-# INLINE randomSampleFrom #-}

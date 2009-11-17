@@ -1,4 +1,6 @@
 {-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE FlexibleInstances #-}
 
 module PIRaTE.Scene where
   import Data.Vector ((*<>),vmag)
@@ -16,7 +18,8 @@ module PIRaTE.Scene where
   import PIRaTE.Material
   import PIRaTE.UtilityFunctions (infinity)
   import PIRaTE.Sampleable
-  import PIRaTE.RandomSample (randomChoice)
+  import PIRaTE.RandomSample
+  import PIRaTE.Sensor
   import Statistics.RandomVariate (Gen,uniform)
   
   -- an Entity is a container filled with light-influencing material
@@ -31,27 +34,31 @@ module PIRaTE.Scene where
   
   randomPointInEntities :: [Entity] -> Gen s -> ST s Point
   randomPointInEntities entities g = do
-    entity <- randomChoice entities g
+    entity <- randomSampleFrom entities g
     let container = entityContainer entity
     randomSampleFrom container g
   
-  isLightsource :: Entity -> Bool
-  isLightsource (Entity _ materials) = any isEmitting materials
-  {-# INLINE isLightsource #-}
+  isEmitter :: Entity -> Bool
+  isEmitter (Entity _ materials) = any isEmitting materials
+  {-# INLINE isEmitter #-}
   
   isInteractor :: Entity -> Bool
   isInteractor (Entity _ materials) = any isInteracting materials
   {-# INLINE isInteractor #-}
   
+  isScatterer :: Entity -> Bool
+  isScatterer (Entity _ materials) = any isScattering materials
+  {-# INLINE isScatterer #-}
+  
   isSensor :: Entity -> Bool
   isSensor (Entity _ materials) = any isSensing materials
   {-# INLINE isSensor #-}
   
+  containing :: [Entity] -> Point -> [Entity]
+  containing entities point = filter ((`contains` point).entityContainer) entities
+  
   summedMaterialAt :: [Entity] -> Point -> Material
-  summedMaterialAt entities point = boiledMaterial
-    where
-      relevantEntities = filter ((`contains` point).entityContainer) entities
-      boiledMaterial = mconcat . concatMap entityMaterials $ relevantEntities
+  summedMaterialAt entities point = mconcat . concatMap entityMaterials $ entities `containing` point
   {-# INLINE summedMaterialAt #-}
 
   propertyAt :: (Material->Texture a) -> [Entity] -> Point -> a
@@ -88,15 +95,22 @@ module PIRaTE.Scene where
     let entities = sceneEntities scene
     replicateM n $ randomPointInEntities entities g
     
-  sceneLightsources :: Scene -> [Entity]
-  sceneLightsources = filter isLightsource . sceneEntities
+  sceneEmitters :: Scene -> [Entity]
+  sceneEmitters = filter isEmitter . sceneEntities
   
   sceneInteractors :: Scene -> [Entity]
   sceneInteractors = filter isInteractor . sceneEntities
+  
+  sceneScatterers :: Scene -> [Entity]
+  sceneScatterers = filter isScatterer . sceneEntities
 
   sceneSensors :: Scene -> [Entity]
   sceneSensors = filter isSensor . sceneEntities
+    
+  -- pick a sensor in the scene, choose a point in the sensor and a direction TODO
+  --instance Sampleable Scene SensorRay where
       
+  
   -- the Bool is used to represent if the IntervalLimiter is the begin of an interval
   data IntervalLimiter a = IntervalLimiter {
       intervalLimiterKey::a,
@@ -223,44 +237,189 @@ module PIRaTE.Scene where
   opticalDepthBetween = depthOfBetween materialExtinction
   {-# INLINE opticalDepthBetween #-}
 
-  -- DistanceSampler
+
+  -- Point Samplers
+  newtype SensationPointSampler = SensationPointSampler Scene
+  instance Sampleable SensationPointSampler (Maybe Point) where
+    randomSampleFrom (SensationPointSampler scene) g
+      | null sensors = return Nothing
+      | otherwise = do entity <- randomSampleFrom sensors g
+                       let container = entityContainer entity
+                       origin <- randomSampleFrom container g
+                       return (Just origin)
+      where sensors = sceneSensors scene
+
+    sampleProbabilityOf (SensationPointSampler scene) (Just origin)
+      | null sensors = 0
+      | otherwise = sum [(sampleProbabilityOf (entityContainer sensor) origin) *
+                         (sampleProbabilityOf sensors sensor) | sensor <- sensors]
+      where sensors = sceneSensors scene `containing` origin
+    sampleProbabilityOf (SensationPointSampler scene) Nothing = undefined
+
+
+  newtype EmissionPointSampler = EmissionPointSampler Scene
+  instance Sampleable EmissionPointSampler (Maybe Point) where
+    randomSampleFrom (EmissionPointSampler scene) g
+      | null emitters = return Nothing
+      | otherwise = do entity <- randomSampleFrom emitters g
+                       let container = entityContainer entity
+                       origin <- randomSampleFrom container g
+                       return (Just origin)
+      where emitters = sceneEmitters scene
+
+    sampleProbabilityOf (EmissionPointSampler scene) (Just origin)
+      | null emitters = 0
+      | otherwise = sum [(sampleProbabilityOf (entityContainer emitter) origin) *
+                         (sampleProbabilityOf emitters emitter) | emitter <- emitters]
+      where emitters = sceneEmitters scene `containing` origin
+    sampleProbabilityOf (EmissionPointSampler scene) Nothing = undefined
+
+
+  newtype ScatteringPointSampler = ScatteringPointSampler Scene
+  instance Sampleable ScatteringPointSampler (Maybe Point) where
+    randomSampleFrom (ScatteringPointSampler scene) g
+      | null scatterers = return Nothing
+      | otherwise = do entity <- randomSampleFrom scatterers g
+                       let container = entityContainer entity
+                       origin <- randomSampleFrom container g
+                       return (Just origin)
+      where scatterers = sceneScatterers scene
+
+    sampleProbabilityOf (ScatteringPointSampler scene) (Just origin)
+      | null scatterers = 0
+      | otherwise = sum [(sampleProbabilityOf (entityContainer scatterer) origin) *
+                         (sampleProbabilityOf scatterers scatterer) | scatterer <- scatterers]
+      where scatterers = sceneScatterers scene `containing` origin
+    sampleProbabilityOf (ScatteringPointSampler scene) Nothing = undefined
+    
+    
+  -- Direction Samplers
+  newtype SensationDirectionSampler = SensationDirectionSampler (Scene, Point)
+  instance Sampleable SensationDirectionSampler (Maybe Direction) where
+    randomSampleFrom (SensationDirectionSampler (scene,origin)) g
+      | null sensors = return Nothing
+      | otherwise = do direction <- randomSampleFrom (weightedsensor,origin) g
+                       return (Just direction)
+      where weightedsensor = materialSensor originmat
+            originmat = summedMaterialAt sensors origin
+            sensors = sceneSensors scene
+            
+    sampleProbabilityOf (SensationDirectionSampler (scene,origin)) (Just direction)
+      | null sensors = 0
+      | otherwise = sampleProbabilityOf (weightedsensor, origin) direction
+      where weightedsensor = materialSensor originmat
+            originmat = summedMaterialAt sensors origin
+            sensors = sceneSensors scene
+    sampleProbabilityOf (SensationDirectionSampler (scene,origin)) Nothing = undefined
+
+
+  newtype EmissionDirectionSampler = EmissionDirectionSampler (Scene, Point)
+  instance Sampleable EmissionDirectionSampler (Maybe Direction) where
+    randomSampleFrom (EmissionDirectionSampler (scene,origin)) g
+      | null emitters = return Nothing
+      | otherwise = do direction <- randomSampleFrom (weightedphasefunction, Ray origin undefined) g
+                       return (Just direction)
+      where weightedphasefunction = materialEmissionDirectedness originmat
+            originmat = summedMaterialAt emitters origin
+            emitters = sceneEmitters scene
+            
+    sampleProbabilityOf (EmissionDirectionSampler (scene,origin)) (Just direction)
+      | null emitters = 0
+      | otherwise = sampleProbabilityOf (weightedphasefunction, Ray origin undefined) direction
+      where weightedphasefunction = materialEmissionDirectedness originmat
+            originmat = summedMaterialAt emitters origin
+            emitters = sceneEmitters scene
+    sampleProbabilityOf (EmissionDirectionSampler (scene,origin)) Nothing = undefined
+
+
+  newtype ScatteringDirectionSampler = ScatteringDirectionSampler (Scene, Point, Direction)
+  instance Sampleable ScatteringDirectionSampler (Maybe Direction) where
+    randomSampleFrom (ScatteringDirectionSampler (scene,origin,win)) g
+      | null scatterers = return Nothing
+      | otherwise = do wout <- randomSampleFrom (weightedphasefunction, Ray origin win) g
+                       return (Just wout)
+      where weightedphasefunction = materialScatteringPhaseFunction originmat
+            originmat = summedMaterialAt scatterers origin
+            scatterers = sceneScatterers scene
+            
+    sampleProbabilityOf (ScatteringDirectionSampler (scene,origin,win)) (Just wout)
+      | null scatterers = 0
+      | otherwise = sampleProbabilityOf (weightedphasefunction, Ray origin win) wout
+      where weightedphasefunction = materialScatteringPhaseFunction originmat
+            originmat = summedMaterialAt scatterers origin
+            scatterers = sceneScatterers scene
+    sampleProbabilityOf (ScatteringDirectionSampler (scene,origin,win)) Nothing = undefined
+
+
+  -- Distance Samplers
+  newtype SensationDistanceSampler = SensationDistanceSampler (Scene,Point,Direction)
+  instance Sampleable SensationDistanceSampler Double where
+    randomSampleFrom (SensationDistanceSampler (scene,origin,direction)) g =
+      randomSampleFrom distsampler g
+      where distsampler = UniformDepthDistanceSampleable (sensors, materialSensitivity, Ray origin direction)
+            sensors = sceneSensors scene
+    {-# INLINE randomSampleFrom #-}
+
+    sampleProbabilityOf (SensationDistanceSampler (scene,origin,direction)) distance = 
+      sampleProbabilityOf distsampler distance
+      where distsampler = UniformDepthDistanceSampleable (sensors, materialSensitivity, Ray origin direction)
+            sensors = sceneSensors scene
+    {-# INLINE sampleProbabilityOf #-}
+
+
+  newtype EmissionDistanceSampler = EmissionDistanceSampler (Scene,Point,Direction)
+  instance Sampleable EmissionDistanceSampler Double where
+    randomSampleFrom (EmissionDistanceSampler (scene,origin,direction)) g =
+      randomSampleFrom distsampler g
+      where distsampler = UniformDepthDistanceSampleable (emitters, materialEmissivity, Ray origin direction)
+            emitters = sceneEmitters scene
+    {-# INLINE randomSampleFrom #-}
+
+    sampleProbabilityOf (EmissionDistanceSampler (scene,origin,direction)) distance = 
+      sampleProbabilityOf distsampler distance
+      where distsampler = UniformDepthDistanceSampleable (emitters, materialEmissivity, Ray origin direction)
+            emitters = sceneEmitters scene
+    {-# INLINE sampleProbabilityOf #-}
+
+
+  newtype ScatteringDistanceSampler = ScatteringDistanceSampler (Scene,Point,Direction)
+  instance Sampleable ScatteringDistanceSampler Double where
+    randomSampleFrom (ScatteringDistanceSampler (scene,origin,direction)) g =
+      randomSampleFrom distsampler g
+      where distsampler = UniformAttenuationDistanceSampleable (scatterers, materialScattering, Ray origin direction)
+            scatterers = sceneScatterers scene
+    {-# INLINE randomSampleFrom #-}
+
+    sampleProbabilityOf (ScatteringDistanceSampler (scene,origin,direction)) distance = 
+      sampleProbabilityOf distsampler distance
+      where distsampler = UniformAttenuationDistanceSampleable (scatterers, materialScattering, Ray origin direction)
+            scatterers = sceneScatterers scene
+    {-# INLINE sampleProbabilityOf #-}
+      
+  
   type DistanceSamplerParameters = ([Entity], Material -> Texture Double, Ray)
   
-  newtype UniformExtinctionDistanceSampleable = UniformExtinctionDistanceSampleable DistanceSamplerParameters
-  instance Sampleable UniformExtinctionDistanceSampleable Double where
-    probabilityDensityOf (UniformExtinctionDistanceSampleable (entities,
-                                                               materialproperty,
-                                                               Ray origin (Direction direction)
-                                                               ))
+  newtype UniformAttenuationDistanceSampleable = UniformAttenuationDistanceSampleable DistanceSamplerParameters
+  instance Sampleable UniformAttenuationDistanceSampleable Double where
+    randomSampleFrom (UniformAttenuationDistanceSampleable (entities,materialproperty,ray)) g = do
+      u1 <- uniform g
+      let depth = negate $ log (u1::Double)
+          proberesult = probePropertyOfEntitiesWithRay materialproperty entities ray infinity depth
+      return . fromMaybe infinity $ getProbeResultDist proberesult
+
+    sampleProbabilityOf (UniformAttenuationDistanceSampleable (entities,
+                                                              materialproperty,
+                                                              Ray origin (Direction direction)
+                                                              ))
                          distance =
       let endpoint = origin + distance *<> direction
           depth = depthOfBetween materialproperty entities origin endpoint
           endpointvalue = propertyAt materialproperty entities endpoint
       in endpointvalue * (exp (-depth))
 
-    randomSampleFrom (UniformExtinctionDistanceSampleable (entities,materialproperty,ray)) g = do
-      u1 <- uniform g
-      let depth = negate $ log (u1::Double)
-          proberesult = probePropertyOfEntitiesWithRay materialproperty entities ray infinity depth
-      return . fromMaybe infinity $ getProbeResultDist proberesult
-
-    
 
   newtype UniformDepthDistanceSampleable = UniformDepthDistanceSampleable DistanceSamplerParameters
   instance Sampleable UniformDepthDistanceSampleable Double where
-    probabilityDensityOf (UniformDepthDistanceSampleable (entities,
-                                                          materialproperty,
-                                                          ray@(Ray origin (Direction direction))
-                                                          ))
-                         distance =
-      if distance==infinity -- did we probe into the void?
-        then infinity -- dumb questions -> dumb answers
-        else let totaldepthproberesult = probePropertyOfEntitiesWithRay materialproperty entities ray infinity infinity
-                 totaldepth = fromJust $ getProbeResultDepth totaldepthproberesult
-                 endpoint = origin + distance *<> direction
-                 endpointvalue = propertyAt materialproperty entities endpoint
-             in endpointvalue / totaldepth
-             
     randomSampleFrom (UniformDepthDistanceSampleable (entities,materialproperty,ray)) g = do
       let probeToInfinity = probePropertyOfEntitiesWithRay materialproperty entities ray infinity
           totaldepthproberesult = probeToInfinity infinity
@@ -272,4 +431,17 @@ module PIRaTE.Scene where
                     proberesult = probeToInfinity randomdepth
                 return . fromMaybe infinity $ getProbeResultDist proberesult
 
-    
+    sampleProbabilityOf (UniformDepthDistanceSampleable (entities,
+                                                         materialproperty,
+                                                         ray@(Ray origin (Direction direction))
+                                                         ))
+                         distance =
+      if distance==infinity -- did we probe into the void?
+        then infinity -- dumb questions -> dumb answers
+        else let totaldepthproberesult = probePropertyOfEntitiesWithRay materialproperty entities ray infinity infinity
+                 totaldepth = fromJust $ getProbeResultDepth totaldepthproberesult
+                 endpoint = origin + distance *<> direction
+                 endpointvalue = propertyAt materialproperty entities endpoint
+             in endpointvalue / totaldepth
+
+

@@ -14,8 +14,8 @@ module PIRaTE.PhaseFunction.Isotropic where
     show Isotropic = "Isotropic"
 
   instance Sampleable (Isotropic,Ray) Direction where
-    probabilityDensityOf (Isotropic,_) _ = 1/(4*pi)
-    {-# INLINE probabilityDensityOf #-}
+    sampleProbabilityOf (Isotropic,_) _ = 1/(4*pi)
+    {-# INLINE sampleProbabilityOf #-}
     randomSampleFrom     (Isotropic,_) g = randomIsotropicDirection g
     {-# INLINE randomSampleFrom #-}
     

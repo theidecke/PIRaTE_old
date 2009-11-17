@@ -34,18 +34,22 @@ module PIRaTE.Sensor where
     
   type WeightedSensor = WS.WeighedSet IndexedSensor
   
-  instance Sampleable (WeightedSensor,Ray) Direction where
-    probabilityDensityOf (wsens,inray) wout = let
+  instance Sampleable (WeightedSensor,Point) Direction where
+    sampleProbabilityOf (wsens,point) wout = let
         step ipf w (tp,tw) = (tp',tw')
-          where tp' = tp + (probabilityDensityOf (pf,inray) wout)
+          where tp' = tp + (sampleProbabilityOf (pf,inray) wout)
                 tw' = tw + w
                 pf  = indexedSensorDirectedness ipf
+                inray = Ray point undefined
         (totalprob,totalweight) = WS.foldWithKey step (0,0) wsens
       in if totalweight>0
         then totalprob / totalweight
         else 0
-    randomSampleFrom     (wsens,inray) g = do
+    randomSampleFrom     (wsens,point) g = do
       indexedphasefunction <- randomWeightedChoice (WS.toWeightList wsens) g
       let pf = indexedSensorDirectedness indexedphasefunction
+          inray = Ray point undefined
       randomSampleFrom (pf,inray) g
     {-# INLINE randomSampleFrom #-}
+    
+

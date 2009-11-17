@@ -38,10 +38,10 @@ module PIRaTE.Container.Sphere where
                in [alphas]
 
   instance Sampleable Sphere Point where
-    probabilityDensityOf s@(Sphere center radius) p
+    sampleProbabilityOf s@(Sphere center radius) p
       | s `contains` p = 3 / (4*pi*(radius^3))
       | otherwise      = 0
-    {-# INLINE probabilityDensityOf #-}
+    {-# INLINE sampleProbabilityOf #-}
     randomSampleFrom     (Sphere center radius) g =  do
       unitpoint <- randomPointInUnitSphere g
       return $ center + radius *<> unitpoint

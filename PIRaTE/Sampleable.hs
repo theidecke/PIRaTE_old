@@ -6,5 +6,5 @@ module PIRaTE.Sampleable where
 
   -- objects of type a from which we can draw samples of type b
   class Sampleable a b where
-    probabilityDensityOf :: a -> b -> Double
-    randomSampleFrom     :: a -> Gen s -> ST s b
+    randomSampleFrom    :: a -> Gen s -> ST s b
+    sampleProbabilityOf :: a -> b -> Double

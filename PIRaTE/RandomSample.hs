@@ -1,3 +1,5 @@
+{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
 module PIRaTE.RandomSample where
   import Control.Monad
   import Control.Monad.ST
@@ -36,8 +38,14 @@ module PIRaTE.RandomSample where
   randomListIndex l g = randomIntInRange (0,length l - 1) g
 
   -- chooses uniformly random a list-element
+  instance Sampleable [a] a where
+    sampleProbabilityOf choices _ = 1 / (fromIntegral $ length choices)
+    --unsafe, should be:
+    --sampleProbabilityOf choices choice = if choice `elem` choices then 1 / (fromIntegral $ length choices) else 0
+    --requires (Eq a) =>
+    randomSampleFrom = randomChoice
+    
   randomChoice :: [a] -> Gen s -> ST s a
-  randomChoice [] g = error "cannot choose an element of an empty list"
   randomChoice choices g = do
     rndindex <- randomListIndex choices g
     return $ choices!!rndindex

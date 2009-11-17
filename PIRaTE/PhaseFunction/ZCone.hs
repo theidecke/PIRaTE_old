@@ -22,10 +22,10 @@ module PIRaTE.PhaseFunction.ZCone where
     show (ZCone h) = "ZCone with capheight " ++ (show h)
 
   instance Sampleable (ZCone,Ray) Direction where
-    probabilityDensityOf (ZCone h,_) (Direction wout)
+    sampleProbabilityOf (ZCone h,_) (Direction wout)
       | v3z wout > 1 - h = 0.5*h
       | otherwise        = 0
-    {-# INLINE probabilityDensityOf #-}
+    {-# INLINE sampleProbabilityOf #-}
     randomSampleFrom     (ZCone h,_) g = randomDirectionInZCone h g
     {-# INLINE randomSampleFrom #-}
     

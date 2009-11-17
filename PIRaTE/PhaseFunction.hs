@@ -16,8 +16,8 @@ module PIRaTE.PhaseFunction where
     show (PhaseFunction pf) = show pf
 
   instance Sampleable (PhaseFunction,Ray) Direction where
-    probabilityDensityOf (PhaseFunction pf,inray) wout = probabilityDensityOf (pf,inray) wout
-    {-# INLINE probabilityDensityOf #-}
+    sampleProbabilityOf (PhaseFunction pf,inray) wout = sampleProbabilityOf (pf,inray) wout
+    {-# INLINE sampleProbabilityOf #-}
     randomSampleFrom     (PhaseFunction pf,inray)    g = randomSampleFrom (pf,inray) g
     {-# INLINE randomSampleFrom #-}
 
@@ -37,9 +37,9 @@ module PIRaTE.PhaseFunction where
   type WeightedPhaseFunction = WS.WeighedSet IndexedPhaseFunction
   
   instance Sampleable (WeightedPhaseFunction,Ray) Direction where
-    probabilityDensityOf (wpf,inray) wout = let
+    sampleProbabilityOf (wpf,inray) wout = let
         step ipf w (tp,tw) = (tp',tw')
-          where tp' = tp + (probabilityDensityOf (pf,inray) wout)
+          where tp' = tp + (sampleProbabilityOf (pf,inray) wout)
                 tw' = tw + w
                 pf  = snd . ipfPairForm $ ipf
         (totalprob,totalweight) = WS.foldWithKey step (0,0) wpf

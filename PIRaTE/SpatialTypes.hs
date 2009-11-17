@@ -18,9 +18,13 @@ module PIRaTE.SpatialTypes where
   type MLTState = Path
     
   data Ray = Ray {
-      origin::Point,
-      direction::Direction
+      rayOrigin::Point,
+      rayDirection::Direction
     } deriving (Eq)
+    
+  followFor :: Ray -> Double -> Point
+  followFor (Ray origin (Direction direction)) distance = origin + distance *<> direction
+  
   instance Show Ray where
     show (Ray o d) = "Ray starting at "++ (showVector3 o) ++" going in Direction "++ (show d) 
 

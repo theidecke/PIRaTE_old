@@ -10,6 +10,7 @@ module PIRaTE.Material (
     materialSensitivity,
     materialSensor,
     isInteracting,
+    isScattering,
     isEmitting,
     isSensing
   ) where
@@ -36,6 +37,9 @@ module PIRaTE.Material (
 
   isInteracting :: Material -> Bool
   isInteracting m = not $ (materialExtinction m)==mempty
+  
+  isScattering :: Material -> Bool
+  isScattering m = not $ (materialScattering m)==mempty
   
   isEmitting :: Material -> Bool
   isEmitting m = not $ (materialEmissivity m)==mempty
