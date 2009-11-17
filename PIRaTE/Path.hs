@@ -2,7 +2,7 @@ module PIRaTE.Path where
   import Data.Vector (Vector3(..))
   import PIRaTE.SpatialTypes
   import PIRaTE.UtilityFunctions (normsq)
-  import PIRaTE.Scene (Scene(..),scatteringAt,opticalDepthBetween,sceneInteractors)
+  import PIRaTE.Scene
   
   --
   -- path stuff
@@ -19,7 +19,8 @@ module PIRaTE.Path where
   measurementContribution                             _   [] = 0
   measurementContribution scene path =
     let interactors = sceneInteractors scene
-        scattercrosssections = map (interactors `scatteringAt`) path
+        scatterers = sceneScatterers scene
+        scattercrosssections = map (scatterers `scatteringAt`) path
     in if any (==0) scattercrosssections
          then 0
          else let scatterfactor = product $ map (*(1/(4*pi))) scattercrosssections

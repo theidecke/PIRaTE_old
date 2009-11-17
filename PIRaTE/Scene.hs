@@ -50,6 +50,10 @@ module PIRaTE.Scene where
   isScatterer (Entity _ materials) = any isScattering materials
   {-# INLINE isScatterer #-}
   
+  isAbsorber :: Entity -> Bool
+  isAbsorber (Entity _ materials) = any isAbsorbing materials
+  {-# INLINE isAbsorber #-}
+  
   isSensor :: Entity -> Bool
   isSensor (Entity _ materials) = any isSensing materials
   {-# INLINE isSensor #-}
@@ -103,6 +107,9 @@ module PIRaTE.Scene where
   
   sceneScatterers :: Scene -> [Entity]
   sceneScatterers = filter isScatterer . sceneEntities
+  
+  sceneAbsorbers :: Scene -> [Entity]
+  sceneAbsorbers = filter isAbsorber . sceneEntities
 
   sceneSensors :: Scene -> [Entity]
   sceneSensors = filter isSensor . sceneEntities
@@ -353,7 +360,7 @@ module PIRaTE.Scene where
 
   -- Distance Samplers
   newtype SensationDistanceSampler = SensationDistanceSampler (Scene,Point,Direction)
-  instance Sampleable SensationDistanceSampler Double where
+  instance Sampleable SensationDistanceSampler (Maybe Double) where
     randomSampleFrom (SensationDistanceSampler (scene,origin,direction)) g =
       randomSampleFrom distsampler g
       where distsampler = UniformDepthDistanceSampleable (sensors, materialSensitivity, Ray origin direction)
@@ -368,7 +375,7 @@ module PIRaTE.Scene where
 
 
   newtype EmissionDistanceSampler = EmissionDistanceSampler (Scene,Point,Direction)
-  instance Sampleable EmissionDistanceSampler Double where
+  instance Sampleable EmissionDistanceSampler (Maybe Double) where
     randomSampleFrom (EmissionDistanceSampler (scene,origin,direction)) g =
       randomSampleFrom distsampler g
       where distsampler = UniformDepthDistanceSampleable (emitters, materialEmissivity, Ray origin direction)
@@ -383,7 +390,7 @@ module PIRaTE.Scene where
 
 
   newtype ScatteringDistanceSampler = ScatteringDistanceSampler (Scene,Point,Direction)
-  instance Sampleable ScatteringDistanceSampler Double where
+  instance Sampleable ScatteringDistanceSampler (Maybe Double) where
     randomSampleFrom (ScatteringDistanceSampler (scene,origin,direction)) g =
       randomSampleFrom distsampler g
       where distsampler = UniformAttenuationDistanceSampleable (scatterers, materialScattering, Ray origin direction)
@@ -400,48 +407,45 @@ module PIRaTE.Scene where
   type DistanceSamplerParameters = ([Entity], Material -> Texture Double, Ray)
   
   newtype UniformAttenuationDistanceSampleable = UniformAttenuationDistanceSampleable DistanceSamplerParameters
-  instance Sampleable UniformAttenuationDistanceSampleable Double where
+  instance Sampleable UniformAttenuationDistanceSampleable (Maybe Double) where
     randomSampleFrom (UniformAttenuationDistanceSampleable (entities,materialproperty,ray)) g = do
       u1 <- uniform g
       let depth = negate $ log (u1::Double)
           proberesult = probePropertyOfEntitiesWithRay materialproperty entities ray infinity depth
-      return . fromMaybe infinity $ getProbeResultDist proberesult
+      return (getProbeResultDist proberesult)
 
     sampleProbabilityOf (UniformAttenuationDistanceSampleable (entities,
                                                               materialproperty,
                                                               Ray origin (Direction direction)
                                                               ))
-                         distance =
+                        (Just distance) =
       let endpoint = origin + distance *<> direction
           depth = depthOfBetween materialproperty entities origin endpoint
           endpointvalue = propertyAt materialproperty entities endpoint
       in endpointvalue * (exp (-depth))
+    sampleProbabilityOf _ Nothing = undefined
 
 
   newtype UniformDepthDistanceSampleable = UniformDepthDistanceSampleable DistanceSamplerParameters
-  instance Sampleable UniformDepthDistanceSampleable Double where
-    randomSampleFrom (UniformDepthDistanceSampleable (entities,materialproperty,ray)) g = do
-      let probeToInfinity = probePropertyOfEntitiesWithRay materialproperty entities ray infinity
-          totaldepthproberesult = probeToInfinity infinity
-          totaldepth = fromJust $ getProbeResultDepth totaldepthproberesult
-      if totaldepth==0
-        then return infinity
-        else do u1 <- uniform g
-                let randomdepth = totaldepth * (u1::Double)
-                    proberesult = probeToInfinity randomdepth
-                return . fromMaybe infinity $ getProbeResultDist proberesult
+  instance Sampleable UniformDepthDistanceSampleable (Maybe Double) where
+    randomSampleFrom (UniformDepthDistanceSampleable (entities,materialproperty,ray)) g
+      | totaldepth==0 = return Nothing
+      | otherwise = do u1 <- uniform g
+                       let randomdepth = totaldepth * (u1::Double)
+                           proberesult = probeToInfinity randomdepth
+                       return (getProbeResultDist proberesult)
+      where totaldepth = fromJust $ getProbeResultDepth totaldepthproberesult
+            totaldepthproberesult = probeToInfinity infinity
+            probeToInfinity = probePropertyOfEntitiesWithRay materialproperty entities ray infinity
 
     sampleProbabilityOf (UniformDepthDistanceSampleable (entities,
                                                          materialproperty,
                                                          ray@(Ray origin (Direction direction))
                                                          ))
-                         distance =
-      if distance==infinity -- did we probe into the void?
-        then infinity -- dumb questions -> dumb answers
-        else let totaldepthproberesult = probePropertyOfEntitiesWithRay materialproperty entities ray infinity infinity
-                 totaldepth = fromJust $ getProbeResultDepth totaldepthproberesult
-                 endpoint = origin + distance *<> direction
-                 endpointvalue = propertyAt materialproperty entities endpoint
-             in endpointvalue / totaldepth
-
-
+                        (Just distance)
+      = endpointvalue / totaldepth
+        where endpointvalue = propertyAt materialproperty entities endpoint
+              endpoint = origin + distance *<> direction
+              totaldepth = fromJust $ getProbeResultDepth totaldepthproberesult
+              totaldepthproberesult = probePropertyOfEntitiesWithRay materialproperty entities ray infinity infinity
+    sampleProbabilityOf _ Nothing = undefined
