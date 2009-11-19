@@ -9,7 +9,6 @@ module PIRaTE.Scene where
   import qualified Data.List as L
   import qualified Data.Set as S
   import Control.Monad.ST (ST)
-  import Control.Monad (replicateM)
   import PIRaTE.SpatialTypes
   import PIRaTE.Confineable
   import PIRaTE.Container
@@ -95,10 +94,6 @@ module PIRaTE.Scene where
       sceneEntities::[Entity]
     }
 
-  randomPathOfLength scene n g = do
-    let entities = sceneEntities scene
-    replicateM n $ randomPointInEntities entities g
-    
   sceneEmitters :: Scene -> [Entity]
   sceneEmitters = filter isEmitter . sceneEntities
   

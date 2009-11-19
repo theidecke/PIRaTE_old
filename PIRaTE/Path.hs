@@ -1,7 +1,15 @@
+{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
+
 module PIRaTE.Path where
   import Data.Vector (Vector3(..))
+  import Data.Maybe (isNothing,fromJust)
+  import Control.Monad (replicateM,sequence)
   import PIRaTE.SpatialTypes
   import PIRaTE.UtilityFunctions (normsq)
+  import PIRaTE.Sampleable
+  import Statistics.RandomVariate (Gen)
+  import Control.Monad.ST (ST)
   import PIRaTE.Scene
   
   --
@@ -16,7 +24,7 @@ module PIRaTE.Path where
   finalizePath = addSensorNode . addLightSourceNode
   
   measurementContribution :: Scene -> Path -> Double
-  measurementContribution                             _   [] = 0
+  measurementContribution     _   [] = 0
   measurementContribution scene path =
     let interactors = sceneInteractors scene
         scatterers = sceneScatterers scene
@@ -36,3 +44,28 @@ module PIRaTE.Path where
   edgeMap f (a:b:rest) = f a b : edgeMap f (b:rest)
   
   
+  newtype SimplePathSampler = SimplePathSampler (Scene,Int)
+  instance Sampleable SimplePathSampler (Maybe Path) where
+    randomSampleFrom (SimplePathSampler (scene,n)) g = do
+      emissionpoint <- randomSampleFrom (EmissionPointSampler scene) g
+      scatterpoints <- replicateM (n-1) . randomSampleFrom (ScatteringPointSampler scene) $ g
+      sensationpoint <- randomSampleFrom (SensationPointSampler scene) g
+      return . sequence $ [emissionpoint]++scatterpoints++[sensationpoint]
+    
+    sampleProbabilityOf (SimplePathSampler (scene,n)) (Just path)
+      | pathLength path /= n = 0
+      | otherwise = emissionprob * scatterprobs * sensationprob
+      where emissionprob  = sampleProbabilityOf (EmissionPointSampler  scene) (Just emissionpoint)
+            scatterprobs  = product $ map ((sampleProbabilityOf (ScatteringPointSampler scene)).Just) scatterpoints
+            sensationprob = sampleProbabilityOf (SensationPointSampler scene) (Just sensationpoint)
+            (emissionpoint:rest) = path
+            scatterpoints = init rest
+            sensationpoint = last rest
+    sampleProbabilityOf _ Nothing = undefined
+  
+  randomPathOfLength :: Scene -> Int -> Gen s -> ST s Path
+  randomPathOfLength scene n g = do
+    completepath <- randomSampleFrom (SimplePathSampler (scene,n)) g
+    if (isNothing completepath)
+      then randomPathOfLength scene n g
+      else return (fromJust completepath)

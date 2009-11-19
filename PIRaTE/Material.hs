@@ -1,6 +1,8 @@
 module PIRaTE.Material (
     Material,
     toHomogenousInteractingMaterial,
+    toHomogenousEmittingMaterial,
+    toHomogenousSensingMaterial,
     materialAbsorption,
     materialScattering,
     materialExtinction,

@@ -13,6 +13,7 @@ module PIRaTE.Sensor where
   
   -- the kinds of sensor data we might want to log  
   data SensorResult = Grid2DPhoton (Int,Int) Double
+                    | PathLength Int
   
   type SensorLogger = MLTState -> SensorResult
   newtype IndexedSensor = IndexedSensor {indexedSensorTripleForm :: (Int,PhaseFunction,SensorLogger)}
@@ -51,5 +52,4 @@ module PIRaTE.Sensor where
           inray = Ray point undefined
       randomSampleFrom (pf,inray) g
     {-# INLINE randomSampleFrom #-}
-    
 

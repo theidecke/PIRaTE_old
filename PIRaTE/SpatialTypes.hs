@@ -15,7 +15,10 @@ module PIRaTE.SpatialTypes where
   arcsec = 2*pi/1296000
   
   type Path = [Point]
+  pathLength path = length path - 1
   type MLTState = Path
+  mltStatePath = id
+  mltStatePathLength = pathLength . mltStatePath
     
   data Ray = Ray {
       rayOrigin::Point,
