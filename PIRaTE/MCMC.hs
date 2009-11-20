@@ -1,5 +1,6 @@
 module PIRaTE.MCMC where
   import Data.Array.Vector (singletonU)
+  import Data.Maybe
   import Control.Monad.ST (ST,runST)
   import Statistics.RandomVariate (Gen,Seed,initialize,save,restore,uniform)
   import PIRaTE.SpatialTypes
@@ -17,14 +18,17 @@ module PIRaTE.MCMC where
   metropolisStep :: Scene -> MutationList -> MLTState -> Gen s -> ST s MLTState
   metropolisStep scene mutations oldstate g = do
     mutation <- randomWeightedChoice mutations g
-    newstate <- mutateWith mutation scene oldstate g
-    let accprob = acceptanceProbabilityOf mutation scene oldstate newstate
-    if accprob==0
-      then return oldstate
-      else do rnd <- uniform g
-              if rnd<=accprob
-                then return newstate
-                else return oldstate
+    maybenewstate <- mutateWith mutation scene oldstate g
+    if (isNothing maybenewstate)
+      then metropolisStep scene mutations oldstate g
+      else do let newstate = fromJust maybenewstate
+                  accprob = acceptanceProbabilityOf mutation scene oldstate newstate
+              if accprob==0
+                then return oldstate
+                else do rnd <- uniform g
+                        if rnd<=accprob
+                          then return newstate
+                          else return oldstate
 
   nMLTSteps :: Scene -> MutationList -> Int -> MLTState -> Gen s -> ST s [MLTState]
   nMLTSteps scene mutations n initialstate g

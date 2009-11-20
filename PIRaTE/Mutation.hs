@@ -6,7 +6,7 @@ module PIRaTE.Mutation where
   import qualified Data.List as L (findIndex)
   import Statistics.RandomVariate (Gen,uniform)
   import Control.Monad.ST (ST)
-  import PIRaTE.SpatialTypes (MLTState)
+  import PIRaTE.SpatialTypes (MLTState,mltStatePath,mltStatePathLength,mltStateSubstitutePath)
   import PIRaTE.UtilityFunctions (mapAt)
   import PIRaTE.RandomSample
   import PIRaTE.Scene (Scene)
@@ -29,7 +29,7 @@ module PIRaTE.Mutation where
     mutateWith :: a -> Path -> Gen s -> ST s Path
   --}
   class Mutating a where
-    mutateWith              :: a -> Scene -> MLTState -> Gen s -> ST s MLTState
+    mutateWith              :: a -> Scene -> MLTState -> Gen s -> ST s (Maybe MLTState)
     acceptanceProbabilityOf :: a -> Scene -> MLTState -> MLTState -> Double
     
   -- define algebraic datatype which can hold all Mutations which adher to the 'Mutating' type class,
@@ -45,9 +45,11 @@ module PIRaTE.Mutation where
   data ExponentialNodeTranslation = ExponentialNodeTranslation Double
   instance Mutating ExponentialNodeTranslation where
     mutateWith (ExponentialNodeTranslation l) scene oldstate g = do
-      rndindex <- randomListIndex oldstate g
+      let oldpath = mltStatePath oldstate
+      rndindex <- randomListIndex oldpath g
       rndtranslation <- randomExponential3D l g
-      return $ mapAt rndindex (+rndtranslation) oldstate
+      let newpath = mapAt rndindex (+rndtranslation) oldpath
+      return . Just $ mltStateSubstitutePath oldstate newpath
     acceptanceProbabilityOf (ExponentialNodeTranslation l) scene oldstate newstate =
       defautAcceptanceProbability (measurementContribution scene) (\_ _ -> 1) oldstate newstate
 
@@ -56,7 +58,10 @@ module PIRaTE.Mutation where
   instance Mutating ExponentialImageNodeTranslation where
     mutateWith (ExponentialImageNodeTranslation l) scene oldstate g = do
       rndtranslation <- randomExponential3D l g
-      return $ mapAt (length oldstate - 1) (+rndtranslation) oldstate
+      let oldpath = mltStatePath oldstate
+          oldpathlength = mltStatePathLength oldstate
+          newpath = mapAt oldpathlength (+rndtranslation) oldpath
+      return . Just $ mltStateSubstitutePath oldstate newpath
     acceptanceProbabilityOf (ExponentialImageNodeTranslation l) scene oldstate newstate =
       defautAcceptanceProbability (measurementContribution scene) (\_ _ -> 1) oldstate newstate
 
@@ -66,12 +71,13 @@ module PIRaTE.Mutation where
     mutateWith (IncDecPathLength l) scene oldstate g = do
       u <- uniform g
       let coinflip = u::Bool
-          oldnodecount = length oldstate
+          oldpath = mltStatePath oldstate
+          oldnodecount = length oldpath
       if coinflip
         then do -- add node
           rndtranslation <- randomExponential3D l g
           addindex <- randomIntInRange (0,oldnodecount) g
-          let (prelist,postlist) = splitAt addindex oldstate
+          let (prelist,postlist) = splitAt addindex oldpath
               anchor
                 | addindex==0            = if null postlist then Vector3 0 0 0 else head postlist
                 | addindex==oldnodecount = if null  prelist then Vector3 0 0 0 else last  prelist
@@ -79,21 +85,25 @@ module PIRaTE.Mutation where
                                                postnode = head postlist
                                            in 0.5*<>(prenode + postnode)
               newnode = anchor + rndtranslation
-          return $ prelist ++ [newnode] ++ postlist
+              newpath = prelist ++ [newnode] ++ postlist
+          return . Just $ mltStateSubstitutePath oldstate newpath
         else if oldnodecount > 1
           then do -- delete node
             delindex <- randomListIndex oldstate g
             let (prelist,postlist) = splitAt delindex oldstate
-            return $ prelist ++ (tail postlist)
+                newpath = prelist ++ (tail postlist)
+            return . Just $ mltStateSubstitutePath oldstate newpath
           else
-            return oldstate
+            return Nothing
     acceptanceProbabilityOf (IncDecPathLength l) scene oldstate newstate =
       defautAcceptanceProbability (measurementContribution scene) (incDecPathLengthTransitionProbability l) oldstate newstate
 
 
   incDecPathLengthTransitionProbability :: Double -> MLTState -> MLTState -> Double
-  incDecPathLengthTransitionProbability lambda oldpath newpath =
-    let oldpathlength = length oldpath
+  incDecPathLengthTransitionProbability lambda oldstate newstate =
+    let oldpath = mltStatePath oldstate
+        newpath = mltStatePath newstate
+        oldpathlength = length oldpath
         newpathlength = length newpath
     in 0.5 * if newpathlength > oldpathlength
       then -- added node

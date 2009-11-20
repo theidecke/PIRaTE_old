@@ -22,8 +22,12 @@ module PIRaTE.SpatialTypes where
   type Path = [Point]
   pathLength path = length path - 1
   type MLTState = Path
+  mltStatePath :: MLTState -> Path
   mltStatePath = id
+  mltStatePathLength :: MLTState -> Int
   mltStatePathLength = pathLength . mltStatePath
+  mltStateSubstitutePath :: MLTState -> Path -> MLTState
+  mltStateSubstitutePath oldstate newpath = newpath
     
   data Ray = Ray {
       rayOrigin::Point,
