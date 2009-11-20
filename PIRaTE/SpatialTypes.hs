@@ -7,12 +7,17 @@ module PIRaTE.SpatialTypes where
   showVector3 v = "<"++ show (v3x v) ++", "++ show (v3y v) ++", "++ show (v3z v) ++">"
 
   newtype Direction = Direction Vector3
+  appliedToDirection f (Direction d) = Direction (f d)
+  fromEdge e = Direction (normalize e)
+  
   instance Show Direction where
     show (Direction d) = showVector3 d
   instance Eq Direction where
     (==) (Direction d1) (Direction d2) = (==) d1 d2
   
   arcsec = 2*pi/1296000
+  arcmin = 60*arcsec
+  degree = 60*arcmin
   
   type Path = [Point]
   pathLength path = length path - 1
