@@ -1,0 +1,7 @@
+*.o
+*.hi
+*.txt
+Main
+Playground.hs
+projectPIRaTE.tmproj
+
