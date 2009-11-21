@@ -20,6 +20,8 @@ module PIRaTE.Mutation where
     (/) ((f newstate) * (t newstate oldstate))
         ((f oldstate) * (t oldstate newstate))
         
+  translationInvariant _ _ = 1
+        
   {--
     -- Mutations should adher to this type class:
     -- gives the acceptance probability for the transition (with parameters of type a)
@@ -51,7 +53,7 @@ module PIRaTE.Mutation where
       let newpath = mapAt rndindex (+rndtranslation) oldpath
       return . Just $ mltStateSubstitutePath oldstate newpath
     acceptanceProbabilityOf (ExponentialNodeTranslation l) scene oldstate newstate =
-      defautAcceptanceProbability (measurementContribution scene) (\_ _ -> 1) oldstate newstate
+      defautAcceptanceProbability (measurementContribution scene) translationInvariant oldstate newstate
 
 
   data ExponentialImageNodeTranslation = ExponentialImageNodeTranslation Double
@@ -63,7 +65,7 @@ module PIRaTE.Mutation where
           newpath = mapAt oldpathlength (+rndtranslation) oldpath
       return . Just $ mltStateSubstitutePath oldstate newpath
     acceptanceProbabilityOf (ExponentialImageNodeTranslation l) scene oldstate newstate =
-      defautAcceptanceProbability (measurementContribution scene) (\_ _ -> 1) oldstate newstate
+      defautAcceptanceProbability (measurementContribution scene) translationInvariant oldstate newstate
 
 
   data IncDecPathLength = IncDecPathLength Double  
