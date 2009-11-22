@@ -1,5 +1,7 @@
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE TypeSynonymInstances #-}
+
 module PIRaTE.RandomSample where
   import Control.Monad
   import Control.Monad.ST
@@ -7,7 +9,7 @@ module PIRaTE.RandomSample where
   import Statistics.RandomVariate
   import Statistics.Distribution (quantile)
   import Statistics.Distribution.Exponential (fromLambda)
-  import Data.Vector (Vector3(..),(*<>))
+  import Data.Vector (Vector3(..),(*<>),vmag)
   import qualified Data.WeighedSet as WS
   import PIRaTE.SpatialTypes
   import PIRaTE.UtilityFunctions (normsq,infinity)
@@ -70,12 +72,17 @@ module PIRaTE.RandomSample where
     u1 <- uniform g
     return $ quantile d (u1::Double)
 
-  randomExponential3D :: Double -> Gen s -> ST s Point
-  randomExponential3D lambda g = do
-    (Direction rdir) <- randomIsotropicDirection g
-    rexp <- distributionSample (fromLambda (1/lambda)) g
-    return $ rexp *<> rdir
-    
+  newtype Exponential3DPointSampler = Exponential3DPointSampler Double
+  instance Sampleable Exponential3DPointSampler Point where
+    randomSampleFrom (Exponential3DPointSampler lambda) g = do
+      (Direction rdir) <- randomIsotropicDirection g
+      rexp <- distributionSample (fromLambda (1/lambda)) g
+      return $ rexp *<> rdir
+
+    sampleProbabilityOf (Exponential3DPointSampler lambda) p = (exp (-r/lambda))/(4*pi*lambda*r^2)
+                                                               where r = vmag p
+
+
   randomPointInUnitSphere :: Gen s -> ST s Point
   randomPointInUnitSphere g = do
     u1 <- uniform g

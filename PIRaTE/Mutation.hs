@@ -8,6 +8,7 @@ module PIRaTE.Mutation where
   import Control.Monad.ST (ST)
   import PIRaTE.SpatialTypes (MLTState,mltStatePath,mltStatePathLength,mltStateSubstitutePath)
   import PIRaTE.UtilityFunctions (mapAt)
+  import PIRaTE.Sampleable
   import PIRaTE.RandomSample
   import PIRaTE.Scene (Scene)
   import PIRaTE.Path (measurementContribution)
@@ -49,7 +50,7 @@ module PIRaTE.Mutation where
     mutateWith (ExponentialNodeTranslation l) scene oldstate g = do
       let oldpath = mltStatePath oldstate
       rndindex <- randomListIndex oldpath g
-      rndtranslation <- randomExponential3D l g
+      rndtranslation <- randomSampleFrom (Exponential3DPointSampler l) g
       let newpath = mapAt rndindex (+rndtranslation) oldpath
       return . Just $ mltStateSubstitutePath oldstate newpath
     acceptanceProbabilityOf (ExponentialNodeTranslation l) scene oldstate newstate =
@@ -59,7 +60,7 @@ module PIRaTE.Mutation where
   data ExponentialImageNodeTranslation = ExponentialImageNodeTranslation Double
   instance Mutating ExponentialImageNodeTranslation where
     mutateWith (ExponentialImageNodeTranslation l) scene oldstate g = do
-      rndtranslation <- randomExponential3D l g
+      rndtranslation <- randomSampleFrom (Exponential3DPointSampler l) g
       let oldpath = mltStatePath oldstate
           oldpathlength = mltStatePathLength oldstate
           newpath = mapAt oldpathlength (+rndtranslation) oldpath
@@ -77,7 +78,7 @@ module PIRaTE.Mutation where
           oldnodecount = length oldpath
       if coinflip
         then do -- add node
-          rndtranslation <- randomExponential3D l g
+          rndtranslation <- randomSampleFrom (Exponential3DPointSampler l) g
           addindex <- randomIntInRange (0,oldnodecount) g
           let (prelist,postlist) = splitAt addindex oldpath
               anchor
@@ -115,9 +116,9 @@ module PIRaTE.Mutation where
               | newnodeindex==0             = if null oldpath then Vector3 0 0 0 else head oldpath
               | newnodeindex==oldpathlength = if null oldpath then Vector3 0 0 0 else last oldpath
               | otherwise                   = 0.5*<>(sum . take 2 $ drop (newnodeindex-1) oldpath)
-            distance = vmag (newnode - anchor)
-            exp3dpdf r = (exp (-r/lambda)) / (4*pi*lambda*r*r)
-        in (exp3dpdf distance) / fromIntegral (length newpath)
+            exp3dpointsample = newnode - anchor
+            exp3dprob = sampleProbabilityOf (Exponential3DPointSampler lambda) exp3dpointsample
+        in exp3dprob / fromIntegral (length newpath)
       else -- deleted node
         1 / max 1 (fromIntegral oldpathlength)
         
