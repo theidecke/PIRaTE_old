@@ -6,7 +6,7 @@ module PIRaTE.Mutation where
   import qualified Data.List as L (findIndex)
   import Statistics.RandomVariate (Gen,uniform)
   import Control.Monad.ST (ST)
-  import PIRaTE.SpatialTypes (MLTState,mltStatePath,mltStatePathLength,mltStateSubstitutePath)
+  import PIRaTE.SpatialTypes (MLTState,mltStatePath,mltStatePathLength,mltStateSubstitutePath,pathNodeCount)
   import PIRaTE.UtilityFunctions (mapAt)
   import PIRaTE.Sampleable
   import PIRaTE.RandomSample
@@ -59,15 +59,27 @@ module PIRaTE.Mutation where
 
   data ExponentialImageNodeTranslation = ExponentialImageNodeTranslation Double
   instance Mutating ExponentialImageNodeTranslation where
-    mutateWith (ExponentialImageNodeTranslation l) scene oldstate g = do
-      rndtranslation <- randomSampleFrom (Exponential3DPointSampler l) g
-      let oldpath = mltStatePath oldstate
-          oldpathlength = mltStatePathLength oldstate
-          newpath = mapAt oldpathlength (+rndtranslation) oldpath
-      return . Just $ mltStateSubstitutePath oldstate newpath
+    mutateWith (ExponentialImageNodeTranslation l) scene oldstate g = 
+      do rndtranslation <- randomSampleFrom (Exponential3DPointSampler l) g
+         let newpath = fixedpath ++ map (+rndtranslation) pathtail
+         return . Just $ mltStateSubstitutePath oldstate newpath
+      where (fixedpath,pathtail) = splitAt (oldnodecount-2) oldpath
+            oldnodecount = pathNodeCount oldpath
+            oldpath = mltStatePath oldstate
+
     acceptanceProbabilityOf (ExponentialImageNodeTranslation l) scene oldstate newstate =
       defautAcceptanceProbability (measurementContribution scene) translationInvariant oldstate newstate
 
+
+  data ResampleSensorDirection = ResampleSensorDirection
+  instance Mutating ResampleSensorDirection where
+    mutateWith ResampleSensorDirection scene oldstate g =
+      do return undefined
+
+    acceptanceProbabilityOf ResampleSensorDirection scene =
+      defautAcceptanceProbability (measurementContribution scene) t
+      where t = undefined
+      
 
   data IncDecPathLength = IncDecPathLength Double  
   instance Mutating IncDecPathLength where

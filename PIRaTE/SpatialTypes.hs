@@ -21,6 +21,7 @@ module PIRaTE.SpatialTypes where
   
   type Path = [Point]
   pathLength path = length path - 1
+  pathNodeCount path = length path
   type MLTState = Path
   mltStatePath :: MLTState -> Path
   mltStatePath = id
