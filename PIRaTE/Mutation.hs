@@ -104,8 +104,8 @@ module PIRaTE.Mutation where
           return . Just $ mltStateSubstitutePath oldstate newpath
         else if oldnodecount > 1
           then do -- delete node
-            delindex <- randomListIndex oldstate g
-            let (prelist,postlist) = splitAt delindex oldstate
+            delindex <- randomListIndex oldpath g
+            let (prelist,postlist) = splitAt delindex oldpath
                 newpath = prelist ++ (tail postlist)
             return . Just $ mltStateSubstitutePath oldstate newpath
           else
