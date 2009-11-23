@@ -279,7 +279,7 @@ module PIRaTE.Scene where
   type TPath = [EPoint] --TypedPath
   type ERay = (EPoint, Direction)
 
-  samplingNothingError name = error "don't know " ++ name ++ " probability of sampling Nothing."
+  samplingNothingError name = error $ "don't know " ++ name ++ " probability of sampling Nothing."
   
   -- Point Samplers
   newtype RecursivePathSampler = RecursivePathSampler (Scene,EPoint,Direction,[EPointDummy])
