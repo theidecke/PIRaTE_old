@@ -319,24 +319,20 @@ module PIRaTE.Scene where
       samplingNothingError "RecursivePathSampler"
 
   raycastbyplan :: Scene -> Direction -> Gen s -> EPoint -> EPointDummy -> ST s (Maybe EPoint)
-  --raycastbyplan scene win g Nothing Sen = liftEP SensationPoint  $ randomSampleFrom (SensationPointSampler  scene) g
-  --raycastbyplan scene win g Nothing Emi = liftEP EmissionPoint   $ randomSampleFrom (EmissionPointSampler   scene) g
-  --raycastbyplan scene win g Nothing Sca = liftEP ScatteringPoint $ randomSampleFrom (ScatteringPointSampler scene) g
-  --raycastbyplan scene win g Nothing _ = return Nothing
-  raycastbyplan scene win g (EPoint ep) Sen = liftEP SensationPoint  $ randomSampleFrom (RaycastPointSampler (dirsampler,dir2distsampler)) g
+  raycastbyplan scene win g (EPoint ep) dummy = liftPoint $ randomSampleFrom (RaycastPointSampler (dirsampler,dir2distsampler)) g
     where dirsampler = getDirectionSampler scene win ep
-          dir2distsampler = \dir -> DistanceSampler $ SensationDistanceSampler  (scene,getPoint ep,dir)
+          dir2distsampler = \dir -> distancesamplerfactory (scene,getPoint ep,dir)
+          distancesamplerfactory = case dummy of
+            Sen -> DistanceSampler . SensationDistanceSampler
+            Emi -> DistanceSampler . EmissionDistanceSampler
+            Sca -> DistanceSampler . ScatteringDistanceSampler
+          liftPoint = liftM (liftM epointfactory)
+          epointfactory = case dummy of
+            Sen -> EPoint . SensationPoint
+            Emi -> EPoint . EmissionPoint
+            Sca -> EPoint . ScatteringPoint
 
-  raycastbyplan scene win g (EPoint ep) Emi = liftEP EmissionPoint   $ randomSampleFrom (RaycastPointSampler (dirsampler,dir2distsampler)) g
-    where dirsampler = getDirectionSampler scene win ep
-          dir2distsampler = \dir -> DistanceSampler $ EmissionDistanceSampler   (scene,getPoint ep,dir)
 
-  raycastbyplan scene win g (EPoint ep) Sca = liftEP ScatteringPoint $ randomSampleFrom (RaycastPointSampler (dirsampler,dir2distsampler)) g
-    where dirsampler = getDirectionSampler scene win ep
-          dir2distsampler = \dir -> DistanceSampler $ ScatteringDistanceSampler (scene,getPoint ep,dir)
-  
-  liftEP ep = liftM (liftM (EPoint . ep))
-  
   newtype RaycastPointSampler = RaycastPointSampler (DirectionSampler,Direction->DistanceSampler)
   instance Sampleable RaycastPointSampler (Maybe Point) where
     randomSampleFrom (RaycastPointSampler (dirsampler,dir2distsampler)) g = do
