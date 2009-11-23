@@ -7,7 +7,7 @@ module PIRaTE.Path where
   import Data.Maybe (isNothing,fromJust)
   import Control.Monad (replicateM,sequence)
   import PIRaTE.SpatialTypes
-  import PIRaTE.UtilityFunctions (normsq,normalize)
+  import PIRaTE.UtilityFunctions (normsq,normalize,edgeMap)
   import PIRaTE.Sampleable
   import Statistics.RandomVariate (Gen)
   import Control.Monad.ST (ST)
@@ -44,10 +44,6 @@ module PIRaTE.Path where
           sensors     = sceneSensors     scene
           interactors = sceneInteractors scene
   
-  edgeMap :: (a->a->b) -> [a] -> [b]
-  edgeMap f     (a:[]) = []
-  edgeMap f (a:b:rest) = f a b : edgeMap f (b:rest)
-
   trisect :: [a] -> (a,[a],a)
   trisect [] = error "cannot trisect empty list"
   trisect (x:xs)
