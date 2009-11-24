@@ -12,7 +12,7 @@ module PIRaTE.Mutation where
   import PIRaTE.Sampleable
   import PIRaTE.RandomSample
   import PIRaTE.Scene
-  import PIRaTE.Path (measurementContribution)
+  import PIRaTE.Path (measurementContribution,trisect)
   
   -- the standard (possibly wasteful) way to compute the acceptance probability
   -- f x should return the probability density for state x
@@ -122,52 +122,69 @@ module PIRaTE.Mutation where
       u <- uniform g
       let coinflip = u::Bool
           oldpath = mltStatePath oldstate
-          oldnodecount = length oldpath
+          (eminode,scatternodes,sensnode) = trisect oldpath
+          scatternodecount = length scatternodes
       if coinflip
-        then do -- add node
-          rndtranslation <- randomSampleFrom (Exponential3DPointSampler l) g
-          addindex <- randomIntInRange (0,oldnodecount) g
-          let (prelist,postlist) = splitAt addindex oldpath
-              anchor
-                | addindex==0            = if null postlist then Vector3 0 0 0 else head postlist
-                | addindex==oldnodecount = if null  prelist then Vector3 0 0 0 else last  prelist
-                | otherwise              = let prenode = last prelist
-                                               postnode = head postlist
-                                           in 0.5*<>(prenode + postnode)
-              newnode = anchor + rndtranslation
-              newpath = prelist ++ [newnode] ++ postlist
-          return . Just $ mltStateSubstitutePath oldstate newpath
-        else if oldnodecount > 1
-          then do -- delete node
-            delindex <- randomListIndex oldpath g
-            let (prelist,postlist) = splitAt delindex oldpath
-                newpath = prelist ++ (tail postlist)
+        then if scatternodecount==0 -- add scatter node
+          then do -- sample new scatterpoint independently
+            maybenewnode <- randomSampleFrom (ScatteringPointSampler scene) g
+            if (isNothing maybenewnode)
+              then return Nothing
+              else do
+                let newnode = fromJust maybenewnode
+                    newpath = [eminode,newnode,sensnode]
+                return . Just $ mltStateSubstitutePath oldstate newpath
+          else do -- sample new scatterpoint by jittered bisection
+            rndtranslation <- randomSampleFrom (Exponential3DPointSampler l) g
+            addindex <- randomIntInRange (0,scatternodecount) g
+            let (prelist,postlist) = splitAt addindex scatternodes
+                anchor
+                  | addindex==0                = head postlist
+                  | addindex==scatternodecount = last  prelist
+                  | otherwise              = let prenode = last prelist
+                                                 postnode = head postlist
+                                             in 0.5*<>(prenode + postnode)
+                newnode = anchor + rndtranslation
+                newpath = [eminode] ++ prelist ++ [newnode] ++ postlist ++ [sensnode]
+            return . Just $ mltStateSubstitutePath oldstate newpath
+        else if scatternodecount > 0
+          then do -- delete scatter node
+            delindex <- randomListIndex scatternodes g
+            let (prelist,postlist) = splitAt delindex scatternodes
+                newpath = [eminode] ++ prelist ++ (tail postlist) ++ [sensnode]
             return . Just $ mltStateSubstitutePath oldstate newpath
           else
             return Nothing
+
     acceptanceProbabilityOf (IncDecPathLength l) scene oldstate newstate =
       defautAcceptanceProbability (measurementContribution scene)
-                                  (incDecPathLengthTransitionProbability l)
+                                  (incDecPathLengthTransitionProbability scene l)
                                   oldstate
                                   newstate
       where
-        incDecPathLengthTransitionProbability :: Double -> MLTState -> MLTState -> Double
-        incDecPathLengthTransitionProbability lambda oldstate newstate =
+        incDecPathLengthTransitionProbability :: Scene -> Double -> MLTState -> MLTState -> Double
+        incDecPathLengthTransitionProbability scene lambda oldstate newstate =
           let oldpath = mltStatePath oldstate
               newpath = mltStatePath newstate
-              oldpathlength = length oldpath
-              newpathlength = length newpath
-          in 0.5 * if newpathlength > oldpathlength
-            then -- added node
-              let newnodeindex = fromMaybe oldpathlength $ L.findIndex (uncurry (/=)) $ zip oldpath newpath
-                  newnode = newpath!!newnodeindex
-                  anchor
-                    | newnodeindex==0             = if null oldpath then Vector3 0 0 0 else head oldpath
-                    | newnodeindex==oldpathlength = if null oldpath then Vector3 0 0 0 else last oldpath
-                    | otherwise                   = 0.5*<>(sum . take 2 $ drop (newnodeindex-1) oldpath)
-                  exp3dpointsample = newnode - anchor
-                  exp3dprob = sampleProbabilityOf (Exponential3DPointSampler lambda) exp3dpointsample
-              in exp3dprob / fromIntegral (length newpath)
+              (_,oldscatternodes,_) = trisect oldpath
+              (_,newscatternodes,_) = trisect newpath
+              oldscatternodecount = length oldscatternodes
+              newscatternodecount = length newscatternodes
+          in 0.5 * if newscatternodecount > oldscatternodecount
+            then let
+                newnodeindex = fromMaybe oldscatternodecount .
+                               L.findIndex (uncurry (/=)) $ zip oldscatternodes newscatternodes
+                newnode = newscatternodes!!newnodeindex                
+              in if oldscatternodecount==0-- added node
+                then -- new scatterpoint sampled independently
+                  sampleProbabilityOf (ScatteringPointSampler scene) (Just newnode)
+                else let -- new scatterpoint sampled by jittered bisection
+                    anchor
+                      | newnodeindex==0                   = head oldpath
+                      | newnodeindex==oldscatternodecount = last oldpath
+                      | otherwise                   = 0.5*<>(sum . take 2 $ drop (newnodeindex-1) oldscatternodes)
+                    exp3dprob = sampleProbabilityOf (Exponential3DPointSampler lambda) (newnode - anchor)
+                  in exp3dprob / (fromIntegral newscatternodecount)
             else -- deleted node
-              1 / max 1 (fromIntegral oldpathlength)
+              1 / max 1 (fromIntegral oldscatternodecount)
         
