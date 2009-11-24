@@ -73,7 +73,11 @@ module PIRaTE.Path where
   
   randomPathOfLength :: Scene -> Int -> Gen s -> ST s Path
   randomPathOfLength scene n g = do
-    completepath <- randomSampleFrom (SimplePathSampler (scene,n)) g
-    if (isNothing completepath)
+    maybecompletepath <- randomSampleFrom (SimplePathSampler (scene,n)) g
+    if (isNothing maybecompletepath)
       then randomPathOfLength scene n g
-      else return (fromJust completepath)
+      else do
+        let completepath = fromJust maybecompletepath
+        if (measurementContribution scene completepath)==0
+          then randomPathOfLength scene n g
+          else return completepath

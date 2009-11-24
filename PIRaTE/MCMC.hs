@@ -51,7 +51,7 @@ module PIRaTE.MCMC where
   
   mltAction :: Scene -> MutationList -> (MLTState -> a) -> Int -> Int -> Int -> [a]
   mltAction scene mutations extractor seedint n chunksize =
-    let ipl = 1 -- initial path length
+    let ipl = 2 -- initial path length
         (seed,initialpath) = runST $ do
                                g <- initialize $ singletonU $ fromIntegral seedint
                                ip <- randomPathOfLength scene ipl g
