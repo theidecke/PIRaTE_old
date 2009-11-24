@@ -440,14 +440,15 @@ module PIRaTE.Scene where
                        return (Just direction)
       where weightedsensor = materialSensor originmat
             originmat = summedMaterialAt sensors origin
-            sensors = sceneSensors scene
-            
+            sensors = sceneSensors scene `containing` origin
+            --TODO: remove double call to `containing` hidden in summedMaterialAt
+
     sampleProbabilityOf (SensationDirectionSampler (scene,origin)) (Just direction)
       | null sensors = 0
       | otherwise = sampleProbabilityOf (weightedsensor, origin) direction
       where weightedsensor = materialSensor originmat
             originmat = summedMaterialAt sensors origin
-            sensors = sceneSensors scene
+            sensors = sceneSensors scene `containing` origin
     sampleProbabilityOf (SensationDirectionSampler (scene,origin)) Nothing =
       samplingNothingError "SensationDirectionSampler"
 
@@ -460,14 +461,14 @@ module PIRaTE.Scene where
                        return (Just direction)
       where weightedphasefunction = materialEmissionDirectedness originmat
             originmat = summedMaterialAt emitters origin
-            emitters = sceneEmitters scene
+            emitters = sceneEmitters scene `containing` origin
             
     sampleProbabilityOf (EmissionDirectionSampler (scene,origin)) (Just direction)
       | null emitters = 0
       | otherwise = sampleProbabilityOf (weightedphasefunction, Ray origin undefined) direction
       where weightedphasefunction = materialEmissionDirectedness originmat
             originmat = summedMaterialAt emitters origin
-            emitters = sceneEmitters scene
+            emitters = sceneEmitters scene `containing` origin
     sampleProbabilityOf (EmissionDirectionSampler (scene,origin)) Nothing =
       samplingNothingError "EmissionDirectionSampler"
 
@@ -480,14 +481,14 @@ module PIRaTE.Scene where
                        return (Just wout)
       where weightedphasefunction = materialScatteringPhaseFunction originmat
             originmat = summedMaterialAt scatterers origin
-            scatterers = sceneScatterers scene
+            scatterers = sceneScatterers scene `containing` origin
             
     sampleProbabilityOf (ScatteringDirectionSampler (scene,origin,win)) (Just wout)
       | null scatterers = 0
       | otherwise = sampleProbabilityOf (weightedphasefunction, Ray origin win) wout
       where weightedphasefunction = materialScatteringPhaseFunction originmat
             originmat = summedMaterialAt scatterers origin
-            scatterers = sceneScatterers scene
+            scatterers = sceneScatterers scene `containing` origin
     sampleProbabilityOf (ScatteringDirectionSampler (scene,origin,win)) Nothing =
       samplingNothingError "ScatteringDirectionSampler"
 
