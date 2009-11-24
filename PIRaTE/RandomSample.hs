@@ -56,11 +56,11 @@ module PIRaTE.RandomSample where
   randomWeightedChoice weightedchoices g = do
     let weights = snd $ unzip weightedchoices
         totalweight = sum weights
+        step                   []  _ = error "cannot choose element from an empty list"
+        step ((choice,     _):[])  _ = choice
         step ((choice,weight):wcs) remainingweight
           | remainingweight > weight = step wcs (remainingweight-weight)
           | otherwise = choice
-        step ((choice,     _):[])  _ = choice
-        step                   []  _ = error "cannot choose element from an empty list"
     u1 <- uniform g
     let randomweight = totalweight*(u1::Double)
     return $ step weightedchoices randomweight
