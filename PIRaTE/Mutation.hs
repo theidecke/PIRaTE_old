@@ -46,6 +46,26 @@ module PIRaTE.Mutation where
     {-# INLINE acceptanceProbabilityOf #-}
   
   -- implemented Mutations
+  data NewEmissionPoint = NewEmissionPoint
+  instance Mutating NewEmissionPoint where
+    mutateWith NewEmissionPoint scene oldstate g = do
+        maybenewemissionpoint <- randomSampleFrom (EmissionPointSampler scene) g
+        if (isNothing maybenewemissionpoint)
+          then return Nothing
+          else do
+            let newemissionpoint = fromJust maybenewemissionpoint
+                newpath = newemissionpoint : tail oldpath
+            return . Just $ mltStateSubstitutePath oldstate newpath
+      where oldpath = mltStatePath oldstate
+
+    acceptanceProbabilityOf (NewEmissionPoint) scene oldstate newstate =
+      defautAcceptanceProbability (measurementContribution scene) translationInvariant oldstate newstate
+      where
+        newEmissionPointTransitionProbability :: Scene -> MLTState -> MLTState -> Double
+        newEmissionPointTransitionProbability scene _ newstate =
+          let newemissionpoint = head $ mltStatePath newstate
+          in sampleProbabilityOf (EmissionPointSampler scene) (Just newemissionpoint)
+
   data ExponentialScatteringNodeTranslation = ExponentialScatteringNodeTranslation Double
   instance Mutating ExponentialScatteringNodeTranslation where
     mutateWith (ExponentialScatteringNodeTranslation l) scene oldstate g

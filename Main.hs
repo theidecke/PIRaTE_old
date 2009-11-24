@@ -23,7 +23,8 @@ module Main where
       Mutation(..),
       ExponentialScatteringNodeTranslation(..),
       ExponentialImageNodeTranslation(..),
-      IncDecPathLength(..)
+      IncDecPathLength(..),
+      NewEmissionPoint(..)
     )
 
 
@@ -41,7 +42,7 @@ module Main where
                      ent2 = Entity cont2 [mat2]
                      ent3 = Entity cont3 [mat3]
                      ent4 = Entity cont4 [mat4]
-                     sensorcontainer = Container $ Sphere (Vector3 0 0 (-100)) 1.0
+                     sensorcontainer = Container $ Sphere (Vector3 0 0 (-10)) 1.0
                      sensormaterial = toHomogenousSensingMaterial 1.0 (1, PhaseFunction $ fromApexAngle sensorangle, PathLength . mltStatePathLength)
                      sensorangle = 1 * degree
                      sensorentity = Entity sensorcontainer [sensormaterial]
@@ -124,8 +125,9 @@ module Main where
     [gridsize,n] <- map read `fmap` getArgs
     let mutations = [(Mutation $ ExponentialScatteringNodeTranslation 0.1 , 3),
                      (Mutation $ ExponentialImageNodeTranslation 0.3      , 4),
+                     (Mutation $ NewEmissionPoint                         , 2),
                      (Mutation $ IncDecPathLength 0.1                     , 3)]
-        extractor = (\v -> (v3x v, v3y v)) . last
+        extractor = (\v -> (v3x v, v3y v)) . last . mltStatePath
         --extractor = (subtract 1).length.finalizePath
         chunksize = min 2500 n
         sigma = 10
@@ -139,6 +141,6 @@ module Main where
     
   --main = putStrLn "Hi there!"
     
-  -- ghc -O2 -fexcess-precision -funfolding-use-threshold=48 --make HMLT.hs -fforce-recomp
-  -- ghc -O2 -fexcess-precision -funfolding-use-threshold=48 --make HMLT.hs -prof -auto-all -caf-all -fforce-recomp
+  -- ghc -O2 -fexcess-precision -funfolding-use-threshold=48 --make Main.hs -fforce-recomp
+  -- ghc -O2 -fexcess-precision -funfolding-use-threshold=48 --make Main.hs -prof -auto-all -caf-all -fforce-recomp
   --}
