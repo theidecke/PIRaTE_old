@@ -128,10 +128,10 @@ module Main where
                      (Mutation $ NewEmissionPoint                         , 2),
                      (Mutation $ IncDecPathLength 0.1                     , 3)]
         extractor = (\v -> (v3x v, v3y v)) . last . mltStatePath
-        --extractor = (subtract 1).length.finalizePath
+        --extractor = mltStatePathLength
         chunksize = min 2500 n
-        sigma = 10
-        scene = testScene --standardScene sigma
+        sigma = 1
+        scene = standardScene sigma --testScene
         samples = mltAction scene mutations extractor 19912 n chunksize
     --putRadiallyBinnedPhotonCounts gridsize samples
     putGridBinnedPhotonCounts gridsize samples
