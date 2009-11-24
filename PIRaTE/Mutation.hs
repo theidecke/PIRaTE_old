@@ -2,15 +2,16 @@
 
 module PIRaTE.Mutation where
   import Data.Vector (Vector3(..),(*<>),vmag)
-  import Data.Maybe (fromMaybe)
+  import Data.Maybe (fromMaybe,isNothing,fromJust)
   import qualified Data.List as L (findIndex)
   import Statistics.RandomVariate (Gen,uniform)
+  import Control.Monad (liftM)
   import Control.Monad.ST (ST)
   import PIRaTE.SpatialTypes (MLTState,mltStatePath,mltStatePathLength,mltStateSubstitutePath,pathNodeCount)
   import PIRaTE.UtilityFunctions (mapAt)
   import PIRaTE.Sampleable
   import PIRaTE.RandomSample
-  import PIRaTE.Scene (Scene)
+  import PIRaTE.Scene
   import PIRaTE.Path (measurementContribution)
   
   -- the standard (possibly wasteful) way to compute the acceptance probability
@@ -45,30 +46,64 @@ module PIRaTE.Mutation where
     {-# INLINE acceptanceProbabilityOf #-}
   
   -- implemented Mutations
-  data ExponentialNodeTranslation = ExponentialNodeTranslation Double
-  instance Mutating ExponentialNodeTranslation where
-    mutateWith (ExponentialNodeTranslation l) scene oldstate g = do
-      let oldpath = mltStatePath oldstate
-      rndindex <- randomListIndex oldpath g
-      rndtranslation <- randomSampleFrom (Exponential3DPointSampler l) g
-      let newpath = mapAt rndindex (+rndtranslation) oldpath
-      return . Just $ mltStateSubstitutePath oldstate newpath
-    acceptanceProbabilityOf (ExponentialNodeTranslation l) scene oldstate newstate =
+  data ExponentialScatteringNodeTranslation = ExponentialScatteringNodeTranslation Double
+  instance Mutating ExponentialScatteringNodeTranslation where
+    mutateWith (ExponentialScatteringNodeTranslation l) scene oldstate g
+      | nodecount<=2 = return Nothing
+      | otherwise = do
+          rndindex <- randomIntInRange (1,nodecount-1) g
+          rndtranslation <- randomSampleFrom (Exponential3DPointSampler l) g
+          let newpath = mapAt rndindex (+rndtranslation) oldpath
+          return . Just $ mltStateSubstitutePath oldstate newpath
+      where nodecount = pathNodeCount oldpath
+            oldpath   = mltStatePath oldstate
+
+    acceptanceProbabilityOf (ExponentialScatteringNodeTranslation l) scene oldstate newstate =
       defautAcceptanceProbability (measurementContribution scene) translationInvariant oldstate newstate
 
 
   data ExponentialImageNodeTranslation = ExponentialImageNodeTranslation Double
   instance Mutating ExponentialImageNodeTranslation where
-    mutateWith (ExponentialImageNodeTranslation l) scene oldstate g = 
-      do rndtranslation <- randomSampleFrom (Exponential3DPointSampler l) g
-         let newpath = fixedpath ++ map (+rndtranslation) pathtail
-         return . Just $ mltStateSubstitutePath oldstate newpath
-      where (fixedpath,pathtail) = splitAt (oldnodecount-2) oldpath
-            oldnodecount = pathNodeCount oldpath
+    mutateWith (ExponentialImageNodeTranslation l) scene oldstate g = do
+        rndtranslation <- randomSampleFrom (Exponential3DPointSampler l) g
+        let newsensorpoint = (last pathtail) + rndtranslation
+            newesensorpoint = EPoint . SensationPoint $ newsensorpoint
+            dummy = if nodecount==2 then Emi else Sca
+        maybenewreversetail <- randomSampleFrom (RecursivePathSampler (scene,newesensorpoint,undefined,[dummy])) g
+        if (isNothing maybenewreversetail)
+          then return Nothing
+          else do
+            let nexttolastpoint = getPoint . last . fromJust $ (maybenewreversetail::(Maybe TPath))
+                newtail = [nexttolastpoint,newsensorpoint]
+                newpath = fixedpath ++ newtail
+            return . Just $ mltStateSubstitutePath oldstate newpath
+      where (fixedpath,pathtail) = splitAt (nodecount-2) oldpath
+            nodecount = pathNodeCount oldpath
             oldpath = mltStatePath oldstate
 
     acceptanceProbabilityOf (ExponentialImageNodeTranslation l) scene oldstate newstate =
-      defautAcceptanceProbability (measurementContribution scene) translationInvariant oldstate newstate
+      defautAcceptanceProbability (measurementContribution scene)
+                                  (expImgNodeTrlTransitionProbability scene l)
+                                  oldstate
+                                  newstate
+      where
+        expImgNodeTrlTransitionProbability :: Scene -> Double -> MLTState -> MLTState -> Double
+        expImgNodeTrlTransitionProbability scene lambda oldstate newstate =
+           sensprob * ntlprob
+          where ntlprob = sampleProbabilityOf recsampler recsample
+                recsampler = RecursivePathSampler (scene,newesensorpoint,undefined,[dummy])
+                recsample = Just [newesensorpoint, epfactory newntl]
+                newesensorpoint = EPoint $ SensationPoint newsens
+                dummy = if newnodecount==2 then Emi else Sca
+                epfactory = if newnodecount==2 then EPoint . EmissionPoint else EPoint . ScatteringPoint
+                sensprob = sampleProbabilityOf (Exponential3DPointSampler lambda) sensdelta
+                sensdelta = newsens - oldsens
+                [oldntl,oldsens] = snd . splitAt (oldnodecount - 2) $ oldpath
+                [newntl,newsens] = snd . splitAt (newnodecount - 2) $ newpath
+                oldnodecount = pathNodeCount oldpath
+                newnodecount = pathNodeCount newpath
+                oldpath = mltStatePath oldstate
+                newpath = mltStatePath newstate
 
 
   data ResampleSensorDirection = ResampleSensorDirection
@@ -111,26 +146,28 @@ module PIRaTE.Mutation where
           else
             return Nothing
     acceptanceProbabilityOf (IncDecPathLength l) scene oldstate newstate =
-      defautAcceptanceProbability (measurementContribution scene) (incDecPathLengthTransitionProbability l) oldstate newstate
-
-
-  incDecPathLengthTransitionProbability :: Double -> MLTState -> MLTState -> Double
-  incDecPathLengthTransitionProbability lambda oldstate newstate =
-    let oldpath = mltStatePath oldstate
-        newpath = mltStatePath newstate
-        oldpathlength = length oldpath
-        newpathlength = length newpath
-    in 0.5 * if newpathlength > oldpathlength
-      then -- added node
-        let newnodeindex = fromMaybe oldpathlength $ L.findIndex (uncurry (/=)) $ zip oldpath newpath
-            newnode = newpath!!newnodeindex
-            anchor
-              | newnodeindex==0             = if null oldpath then Vector3 0 0 0 else head oldpath
-              | newnodeindex==oldpathlength = if null oldpath then Vector3 0 0 0 else last oldpath
-              | otherwise                   = 0.5*<>(sum . take 2 $ drop (newnodeindex-1) oldpath)
-            exp3dpointsample = newnode - anchor
-            exp3dprob = sampleProbabilityOf (Exponential3DPointSampler lambda) exp3dpointsample
-        in exp3dprob / fromIntegral (length newpath)
-      else -- deleted node
-        1 / max 1 (fromIntegral oldpathlength)
+      defautAcceptanceProbability (measurementContribution scene)
+                                  (incDecPathLengthTransitionProbability l)
+                                  oldstate
+                                  newstate
+      where
+        incDecPathLengthTransitionProbability :: Double -> MLTState -> MLTState -> Double
+        incDecPathLengthTransitionProbability lambda oldstate newstate =
+          let oldpath = mltStatePath oldstate
+              newpath = mltStatePath newstate
+              oldpathlength = length oldpath
+              newpathlength = length newpath
+          in 0.5 * if newpathlength > oldpathlength
+            then -- added node
+              let newnodeindex = fromMaybe oldpathlength $ L.findIndex (uncurry (/=)) $ zip oldpath newpath
+                  newnode = newpath!!newnodeindex
+                  anchor
+                    | newnodeindex==0             = if null oldpath then Vector3 0 0 0 else head oldpath
+                    | newnodeindex==oldpathlength = if null oldpath then Vector3 0 0 0 else last oldpath
+                    | otherwise                   = 0.5*<>(sum . take 2 $ drop (newnodeindex-1) oldpath)
+                  exp3dpointsample = newnode - anchor
+                  exp3dprob = sampleProbabilityOf (Exponential3DPointSampler lambda) exp3dpointsample
+              in exp3dprob / fromIntegral (length newpath)
+            else -- deleted node
+              1 / max 1 (fromIntegral oldpathlength)
         

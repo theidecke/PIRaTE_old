@@ -21,7 +21,7 @@ module Main where
   import PIRaTE.MCMC (mltAction)
   import PIRaTE.Mutation (
       Mutation(..),
-      ExponentialNodeTranslation(..),
+      ExponentialScatteringNodeTranslation(..),
       ExponentialImageNodeTranslation(..),
       IncDecPathLength(..)
     )
@@ -122,9 +122,9 @@ module Main where
     
   main = do
     [gridsize,n] <- map read `fmap` getArgs
-    let mutations = [(Mutation $ ExponentialNodeTranslation 0.1      , 3),
-                     (Mutation $ ExponentialImageNodeTranslation 0.3 , 4),
-                     (Mutation $ IncDecPathLength 0.1                , 3)]
+    let mutations = [(Mutation $ ExponentialScatteringNodeTranslation 0.1 , 3),
+                     (Mutation $ ExponentialImageNodeTranslation 0.3      , 4),
+                     (Mutation $ IncDecPathLength 0.1                     , 3)]
         extractor = (\v -> (v3x v, v3y v)) . last
         --extractor = (subtract 1).length.finalizePath
         chunksize = min 2500 n
