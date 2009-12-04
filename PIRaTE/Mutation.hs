@@ -37,7 +37,7 @@ module PIRaTE.Mutation where
     acceptanceProbabilityOf :: a -> Scene -> MLTState -> MLTState -> Double
     
   -- define algebraic datatype which can hold all Mutations which adher to the 'Mutating' type class,
-  data Mutation = forall s. (Mutating s) => Mutation s
+  data Mutation = forall s. (Show s, Mutating s) => Mutation s
 
   instance Mutating Mutation where
     mutateWith              (Mutation m) = mutateWith m
@@ -45,8 +45,13 @@ module PIRaTE.Mutation where
     acceptanceProbabilityOf (Mutation m) = acceptanceProbabilityOf m
     {-# INLINE acceptanceProbabilityOf #-}
   
+  instance Show Mutation where
+    show (Mutation m) = show m
+
   -- implemented Mutations
   data NewEmissionPoint = NewEmissionPoint
+  instance Show NewEmissionPoint where
+    show NewEmissionPoint = "NewEmissionPoint"
   instance Mutating NewEmissionPoint where
     mutateWith NewEmissionPoint scene oldstate g = do
         maybenewemissionpoint <- randomSampleFrom (EmissionPointSampler scene) g
@@ -67,6 +72,8 @@ module PIRaTE.Mutation where
           in sampleProbabilityOf (EmissionPointSampler scene) (Just newemissionpoint)
 
   data ExponentialScatteringNodeTranslation = ExponentialScatteringNodeTranslation Double
+  instance Show ExponentialScatteringNodeTranslation where
+    show (ExponentialScatteringNodeTranslation lambda) = "ExponentialScatteringNodeTranslation(" ++ (show lambda) ++ ")"
   instance Mutating ExponentialScatteringNodeTranslation where
     mutateWith (ExponentialScatteringNodeTranslation l) scene oldstate g
       | nodecount<=2 = return Nothing
@@ -83,6 +90,8 @@ module PIRaTE.Mutation where
 
 
   data ExponentialImageNodeTranslation = ExponentialImageNodeTranslation Double
+  instance Show ExponentialImageNodeTranslation where
+    show (ExponentialImageNodeTranslation lambda) = "ExponentialImageNodeTranslation(" ++ (show lambda) ++ ")"
   instance Mutating ExponentialImageNodeTranslation where
     mutateWith (ExponentialImageNodeTranslation l) scene oldstate g = do
         rndtranslation <- randomSampleFrom (Exponential3DPointSampler l) g
@@ -127,6 +136,8 @@ module PIRaTE.Mutation where
 
 
   data ResampleSensorDirection = ResampleSensorDirection
+  instance Show ResampleSensorDirection where
+    show ResampleSensorDirection = "ResampleSensorDirection"
   instance Mutating ResampleSensorDirection where
     mutateWith ResampleSensorDirection scene oldstate g =
       do return undefined
@@ -136,7 +147,9 @@ module PIRaTE.Mutation where
       where t = undefined
       
 
-  data IncDecPathLength = IncDecPathLength Double  
+  data IncDecPathLength = IncDecPathLength Double
+  instance Show IncDecPathLength where
+    show (IncDecPathLength lambda) = "IncDecPathLength(" ++ (show lambda) ++ ")"
   instance Mutating IncDecPathLength where
     mutateWith (IncDecPathLength l) scene oldstate g = do
       u <- uniform g
