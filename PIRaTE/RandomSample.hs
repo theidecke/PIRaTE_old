@@ -6,6 +6,7 @@ module PIRaTE.RandomSample where
   import Control.Monad
   import Control.Monad.ST
   import Data.Maybe (fromJust,fromMaybe)
+  import Data.Array.Vector (singletonU)
   import Statistics.RandomVariate
   import Statistics.Distribution (quantile)
   import Statistics.Distribution.Exponential (fromLambda)
@@ -100,7 +101,7 @@ module PIRaTE.RandomSample where
   randomIsotropicDirections n g =
     replicateM n $ randomIsotropicDirection g
 
-  runRandomActions seed = runST $ do
-    g <- restore seed
-    replicateM 10 $ randomIsotropicDirection g
+  runRandomSampler sampler seedint = runST $ do
+    gen <- initialize . singletonU $ fromIntegral seedint
+    randomSampleFrom sampler gen
     
