@@ -29,7 +29,9 @@ module PIRaTE.SpatialTypes where
   mltStatePathLength = pathLength . mltStatePath
   mltStateSubstitutePath :: MLTState -> Path -> MLTState
   mltStateSubstitutePath oldstate newpath = newpath
-    
+
+  showMLTState = concatMap showVector3 . mltStatePath
+
   data Ray = Ray {
       rayOrigin::Point,
       rayDirection::Direction
