@@ -4,24 +4,30 @@
 {-# LANGUAGE ExistentialQuantification #-}
 
 module PIRaTE.Scene where
-  import Data.Vector ((*<>),vmag)
+  import Data.Vector ((*<>),vmag,Vector3(..))
   import Data.Monoid
   import Data.Maybe (fromMaybe,fromJust,isNothing)
+  import Data.Array.Vector (singletonU)
   import qualified Data.List as L
   import qualified Data.Set as S
   import Control.Monad (foldM,liftM)
-  import Control.Monad.ST (ST)
+  import Control.Monad.ST (ST,runST)
   import PIRaTE.SpatialTypes
   import PIRaTE.Confineable
   import PIRaTE.Container
+  import PIRaTE.Container.Sphere
   import PIRaTE.PhaseFunction
+  import PIRaTE.PhaseFunction.Isotropic
+  import PIRaTE.PhaseFunction.ZCone
   import PIRaTE.Texture
   import PIRaTE.Material
   import PIRaTE.UtilityFunctions (infinity,edgeMap)
   import PIRaTE.Sampleable
   import PIRaTE.RandomSample
   import PIRaTE.Sensor
-  import Statistics.RandomVariate (Gen,uniform)
+  import Statistics.RandomVariate (Gen,uniform,initialize)
+  import Test.QuickCheck hiding (Gen)
+  import qualified Test.QuickCheck as QC (Gen)
   
   -- an Entity is a container filled with light-influencing material
   data Entity = Entity {
@@ -94,7 +100,7 @@ module PIRaTE.Scene where
   -- a Scene contains all entities
   data Scene = Scene {
       sceneEntities::[Entity]
-    }
+    } deriving Show
 
   sceneEmitters :: Scene -> [Entity]
   sceneEmitters = filter isEmitter . sceneEntities
@@ -110,7 +116,22 @@ module PIRaTE.Scene where
 
   sceneSensors :: Scene -> [Entity]
   sceneSensors = filter isSensor . sceneEntities
-    
+  
+  instance Arbitrary Scene where
+    arbitrary = (standardScene . abs) `fmap` arbitrary where
+      standardScene sigma = let
+          lightsourcecontainer = Container $ Sphere (Vector3 0 0 0) 0.01
+          lightsourcematerial = toHomogenousEmittingMaterial 1.0 (1, PhaseFunction $ Isotropic)
+          lightsourceentity = Entity lightsourcecontainer [lightsourcematerial]
+          scatteringcontainer = Container $ Sphere (Vector3 0 0 0) 1
+          scatteringmaterial = toHomogenousInteractingMaterial 0 sigma (1,PhaseFunction Isotropic)
+          scatteringentity = Entity scatteringcontainer [scatteringmaterial]
+          sensorcontainer = Container $ Sphere (Vector3 0 0 (-3)) 1.1
+          sensormaterial = toHomogenousSensingMaterial 1.0 (1, PhaseFunction $ fromApexAngle sensorangle, PathLength . mltStatePathLength)
+          sensorangle = 1 * degree
+          sensorentity = Entity sensorcontainer [sensormaterial]
+          entities = [lightsourceentity, scatteringentity,sensorentity]
+        in Scene entities
   -- pick a sensor in the scene, choose a point in the sensor and a direction TODO
   --instance Sampleable Scene SensorRay where
       
@@ -361,6 +382,8 @@ module PIRaTE.Scene where
       
   
   newtype SensationPointSampler = SensationPointSampler Scene
+  instance Show SensationPointSampler where
+    show (SensationPointSampler scene) = "SensationPointSampler for Scene: " ++ show scene
   instance Sampleable SensationPointSampler (Maybe Point) where
     randomSampleFrom (SensationPointSampler scene) g
       | null sensors = return Nothing
@@ -377,6 +400,17 @@ module PIRaTE.Scene where
       where sensors = sceneSensors scene `containing` origin
     sampleProbabilityOf (SensationPointSampler scene) Nothing =
       samplingNothingError "SensationPointSampler"
+
+  instance Arbitrary SensationPointSampler where
+    arbitrary = SensationPointSampler `fmap` arbitrary
+
+  prop_SensationPointSampler_nonzeroProb sampler@(SensationPointSampler scene) seedint
+    | any (`contains` point) sensors = sampleprob  > 0
+    | otherwise                      = sampleprob == 0
+    where point = maybe (Vector3 0 0 0) id mpoint
+          sampleprob = sampleProbabilityOf sampler mpoint
+          mpoint = runRandomSampler sampler seedint
+          sensors = map entityContainer $ sceneSensors scene
 
 
   newtype EmissionPointSampler = EmissionPointSampler Scene
