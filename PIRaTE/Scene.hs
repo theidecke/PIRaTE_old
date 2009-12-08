@@ -6,7 +6,7 @@
 module PIRaTE.Scene where
   import Data.Vector ((*<>),vmag,Vector3(..))
   import Data.Monoid
-  import Data.Maybe (fromMaybe,fromJust,isNothing)
+  import Data.Maybe (fromMaybe,fromJust,isNothing,isJust)
   import Data.Array.Vector (singletonU)
   import qualified Data.List as L
   import qualified Data.Set as S
@@ -132,6 +132,7 @@ module PIRaTE.Scene where
           sensorentity = Entity sensorcontainer [sensormaterial]
           entities = [lightsourceentity, scatteringentity,sensorentity]
         in Scene entities
+
   -- pick a sensor in the scene, choose a point in the sensor and a direction TODO
   --instance Sampleable Scene SensorRay where
       
@@ -404,10 +405,11 @@ module PIRaTE.Scene where
   instance Arbitrary SensationPointSampler where
     arbitrary = SensationPointSampler `fmap` arbitrary
 
-  prop_SensationPointSampler_nonzeroProb sampler@(SensationPointSampler scene) seedint
-    | any (`contains` point) sensors = sampleprob  > 0
-    | otherwise                      = sampleprob == 0
-    where point = maybe (Vector3 0 0 0) id mpoint
+  prop_SensationPointSampler_nonzeroProb sampler@(SensationPointSampler scene) seedint =
+    isJust mpoint ==> f sampleprob
+    where f | any (`contains` point) sensors = (>0)
+            | otherwise                      = (==0)
+          point = fromJust mpoint
           sampleprob = sampleProbabilityOf sampler mpoint
           mpoint = runRandomSampler sampler seedint
           sensors = map entityContainer $ sceneSensors scene
