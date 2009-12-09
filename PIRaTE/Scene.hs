@@ -405,6 +405,7 @@ module PIRaTE.Scene where
   instance Arbitrary SensationPointSampler where
     arbitrary = SensationPointSampler `fmap` arbitrary
 
+  prop_SensationPointSampler_nonzeroProb :: SensationPointSampler -> Int -> Property
   prop_SensationPointSampler_nonzeroProb sampler@(SensationPointSampler scene) seedint =
     isJust mpoint ==> f sampleprob
     where f | any (`contains` point) sensors = (>0)
@@ -416,6 +417,8 @@ module PIRaTE.Scene where
 
 
   newtype EmissionPointSampler = EmissionPointSampler Scene
+  instance Show EmissionPointSampler where
+    show (EmissionPointSampler scene) = "EmissionPointSampler for Scene: " ++ show scene
   instance Sampleable EmissionPointSampler (Maybe Point) where
     randomSampleFrom (EmissionPointSampler scene) g
       | null emitters = return Nothing
@@ -433,8 +436,22 @@ module PIRaTE.Scene where
     sampleProbabilityOf (EmissionPointSampler scene) Nothing =
       samplingNothingError "EmissionPointSampler"
 
+  instance Arbitrary EmissionPointSampler where
+    arbitrary = EmissionPointSampler `fmap` arbitrary
+
+  prop_EmissionPointSampler_nonzeroProb :: EmissionPointSampler -> Int -> Property
+  prop_EmissionPointSampler_nonzeroProb sampler@(EmissionPointSampler scene) seedint =
+    isJust mpoint ==> f sampleprob
+    where f | any (`contains` point) emitters = (>0)
+            | otherwise                       = (==0)
+          point = fromJust mpoint
+          sampleprob = sampleProbabilityOf sampler mpoint
+          mpoint = runRandomSampler sampler seedint
+          emitters = map entityContainer $ sceneEmitters scene
 
   newtype ScatteringPointSampler = ScatteringPointSampler Scene
+  instance Show ScatteringPointSampler where
+    show (ScatteringPointSampler scene) = "ScatteringPointSampler for Scene: " ++ show scene
   instance Sampleable ScatteringPointSampler (Maybe Point) where
     randomSampleFrom (ScatteringPointSampler scene) g
       | null scatterers = return Nothing
@@ -451,7 +468,19 @@ module PIRaTE.Scene where
       where scatterers = sceneScatterers scene `containing` origin
     sampleProbabilityOf (ScatteringPointSampler scene) Nothing =
       samplingNothingError "ScatteringPointSampler"
-    
+
+  instance Arbitrary ScatteringPointSampler where
+    arbitrary = ScatteringPointSampler `fmap` arbitrary
+
+  prop_ScatteringPointSampler_nonzeroProb :: ScatteringPointSampler -> Int -> Property
+  prop_ScatteringPointSampler_nonzeroProb sampler@(ScatteringPointSampler scene) seedint =
+    isJust mpoint ==> f sampleprob
+    where f | any (`contains` point) scatterers = (>0)
+            | otherwise                         = (==0)
+          point = fromJust mpoint
+          sampleprob = sampleProbabilityOf sampler mpoint
+          mpoint = runRandomSampler sampler seedint
+          scatterers = map entityContainer $ sceneScatterers scene
     
   -- Direction Samplers
   data DirectionSampler = forall s . (IsDirSampler s, Sampleable s (Maybe Direction)) => DirectionSampler s
@@ -469,6 +498,9 @@ module PIRaTE.Scene where
   instance IsDirSampler ScatteringDirectionSampler where dirSamplerOrigin (ScatteringDirectionSampler (_,origin,_)) = origin
 
   newtype SensationDirectionSampler = SensationDirectionSampler (Scene, Point)
+  instance Show SensationDirectionSampler where
+    show (SensationDirectionSampler (scene,origin)) = "SensationDirectionSampler @" ++ showVector3 origin ++
+                                                      "for Scene: " ++ show scene
   instance Sampleable SensationDirectionSampler (Maybe Direction) where
     randomSampleFrom (SensationDirectionSampler (scene,origin)) g
       | null sensors = return Nothing
@@ -488,8 +520,20 @@ module PIRaTE.Scene where
     sampleProbabilityOf (SensationDirectionSampler (scene,origin)) Nothing =
       samplingNothingError "SensationDirectionSampler"
 
-
+  prop_SensationDirectionSampler_nonzeroProb :: Scene -> Int -> Property
+  prop_SensationDirectionSampler_nonzeroProb scene seedint =
+    isJust mpoint && isJust mdir ==> sampleprob > 0
+    where sampleprob = sampleProbabilityOf dirsampler mdir
+          mdir = (runRandomSampler dirsampler seedint)::(Maybe Direction)
+          dirsampler = SensationDirectionSampler (scene,point)
+          point = fromJust mpoint
+          mpoint = runRandomSampler pointsampler seedint
+          pointsampler = SensationPointSampler scene
+ 
   newtype EmissionDirectionSampler = EmissionDirectionSampler (Scene, Point)
+  instance Show EmissionDirectionSampler where
+    show (EmissionDirectionSampler (scene,origin)) = "EmissionDirectionSampler @" ++ showVector3 origin ++
+                                                     "for Scene: " ++ show scene
   instance Sampleable EmissionDirectionSampler (Maybe Direction) where
     randomSampleFrom (EmissionDirectionSampler (scene,origin)) g
       | null emitters = return Nothing
@@ -508,8 +552,23 @@ module PIRaTE.Scene where
     sampleProbabilityOf (EmissionDirectionSampler (scene,origin)) Nothing =
       samplingNothingError "EmissionDirectionSampler"
 
+  prop_EmissionDirectionSampler_nonzeroProb :: Scene -> Int -> Property
+  prop_EmissionDirectionSampler_nonzeroProb scene seedint =
+    isJust mpoint && isJust mdir ==> sampleprob > 0
+    where sampleprob = sampleProbabilityOf dirsampler mdir
+          mdir = (runRandomSampler dirsampler seedint)::(Maybe Direction)
+          dirsampler = EmissionDirectionSampler (scene,point)
+          point = fromJust mpoint
+          mpoint = runRandomSampler pointsampler seedint
+          pointsampler = EmissionPointSampler scene
+
 
   newtype ScatteringDirectionSampler = ScatteringDirectionSampler (Scene, Point, Direction)
+  instance Show ScatteringDirectionSampler where
+    show (ScatteringDirectionSampler (scene,origin,Direction dir)) =
+      "ScatteringDirectionSampler @" ++ showVector3 origin ++
+      "->@" ++ showVector3 dir ++
+      "for Scene: " ++ show scene
   instance Sampleable ScatteringDirectionSampler (Maybe Direction) where
     randomSampleFrom (ScatteringDirectionSampler (scene,origin,win)) g
       | null scatterers = return Nothing
@@ -528,6 +587,17 @@ module PIRaTE.Scene where
     sampleProbabilityOf (ScatteringDirectionSampler (scene,origin,win)) Nothing =
       samplingNothingError "ScatteringDirectionSampler"
 
+  prop_ScatteringDirectionSampler_nonzeroProb :: Scene -> Int -> Property
+  prop_ScatteringDirectionSampler_nonzeroProb scene seedint =
+    isJust mpoint && isJust mdir ==> sampleprob > 0
+    where sampleprob = sampleProbabilityOf dirsampler mdir
+          mdir = (runRandomSampler dirsampler (seedint+2))::(Maybe Direction)
+          dirsampler = ScatteringDirectionSampler (scene,point,olddir)
+          olddir = (runRandomSampler olddirsampler (seedint+1))::Direction
+          olddirsampler = (Isotropic,undefined::Ray)
+          point = fromJust mpoint
+          mpoint = runRandomSampler pointsampler seedint
+          pointsampler = ScatteringPointSampler scene
 
   -- Distance Samplers
   data DistanceSampler = forall s . (Sampleable s (Maybe Double)) => DistanceSampler s
@@ -537,6 +607,11 @@ module PIRaTE.Scene where
     sampleProbabilityOf (DistanceSampler ds) = sampleProbabilityOf ds
 
   newtype SensationDistanceSampler = SensationDistanceSampler (Scene,Point,Direction)
+  instance Show SensationDistanceSampler where
+    show (SensationDistanceSampler (scene,origin,Direction dir)) =
+      "SensationDistanceSampler @" ++ showVector3 origin ++
+      "->@" ++ showVector3 dir ++
+      "for Scene: " ++ show scene
   instance Sampleable SensationDistanceSampler (Maybe Double) where
     randomSampleFrom (SensationDistanceSampler (scene,origin,direction)) g =
       randomSampleFrom distsampler g
@@ -550,8 +625,23 @@ module PIRaTE.Scene where
             sensors = sceneSensors scene
     {-# INLINE sampleProbabilityOf #-}
 
+  prop_SensationDistanceSampler_nonzeroProb :: Scene -> Int -> Property
+  prop_SensationDistanceSampler_nonzeroProb scene seedint =
+    isJust mdist ==> sampleprob > 0
+    where sampleprob = sampleProbabilityOf distsampler mdist
+          mdist = (runRandomSampler distsampler (seedint+2))::(Maybe Double)
+          dir   = (runRandomSampler  dirsampler (seedint+1))::Direction
+          point  = runRandomSampler pointsampler seedint
+          distsampler = SensationDistanceSampler (scene,point,dir)
+          dirsampler = (Isotropic,undefined::Ray)
+          pointsampler = Exponential3DPointSampler 1.0
 
   newtype EmissionDistanceSampler = EmissionDistanceSampler (Scene,Point,Direction)
+  instance Show EmissionDistanceSampler where
+    show (EmissionDistanceSampler (scene,origin,Direction dir)) =
+      "EmissionDistanceSampler @" ++ showVector3 origin ++
+      "->@" ++ showVector3 dir ++
+      "for Scene: " ++ show scene
   instance Sampleable EmissionDistanceSampler (Maybe Double) where
     randomSampleFrom (EmissionDistanceSampler (scene,origin,direction)) g =
       randomSampleFrom distsampler g
@@ -565,8 +655,23 @@ module PIRaTE.Scene where
             emitters = sceneEmitters scene
     {-# INLINE sampleProbabilityOf #-}
 
+  prop_EmissionDistanceSampler_nonzeroProb :: Scene -> Int -> Property
+  prop_EmissionDistanceSampler_nonzeroProb scene seedint =
+    isJust mdist ==> sampleprob > 0
+    where sampleprob = sampleProbabilityOf distsampler mdist
+          mdist = (runRandomSampler distsampler (seedint+2))::(Maybe Double)
+          dir   = (runRandomSampler  dirsampler (seedint+1))::Direction
+          point  = runRandomSampler pointsampler seedint
+          distsampler = EmissionDistanceSampler (scene,point,dir)
+          dirsampler = (Isotropic,undefined::Ray)
+          pointsampler = Exponential3DPointSampler 1.0
 
   newtype ScatteringDistanceSampler = ScatteringDistanceSampler (Scene,Point,Direction)
+  instance Show ScatteringDistanceSampler where
+    show (ScatteringDistanceSampler (scene,origin,Direction dir)) =
+      "ScatteringDistanceSampler @" ++ showVector3 origin ++
+      "->@" ++ showVector3 dir ++
+      "for Scene: " ++ show scene
   instance Sampleable ScatteringDistanceSampler (Maybe Double) where
     randomSampleFrom (ScatteringDistanceSampler (scene,origin,direction)) g =
       randomSampleFrom distsampler g
@@ -579,7 +684,17 @@ module PIRaTE.Scene where
       where distsampler = UniformAttenuationDistanceSampleable (scatterers, materialScattering, Ray origin direction)
             scatterers = sceneScatterers scene
     {-# INLINE sampleProbabilityOf #-}
-      
+
+  prop_ScatteringDistanceSampler_nonzeroProb :: Scene -> Int -> Property
+  prop_ScatteringDistanceSampler_nonzeroProb scene seedint =
+    isJust mdist ==> sampleprob > 0
+    where sampleprob = sampleProbabilityOf distsampler mdist
+          mdist = (runRandomSampler distsampler (seedint+2))::(Maybe Double)
+          dir   = (runRandomSampler  dirsampler (seedint+1))::Direction
+          point  = runRandomSampler pointsampler seedint
+          distsampler = ScatteringDistanceSampler (scene,point,dir)
+          dirsampler = (Isotropic,undefined::Ray)
+          pointsampler = Exponential3DPointSampler 1.0
   
   type DistanceSamplerParameters = ([Entity], Material -> Texture Double, Ray)
   

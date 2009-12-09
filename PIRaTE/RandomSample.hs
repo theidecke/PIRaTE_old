@@ -17,6 +17,7 @@ module PIRaTE.RandomSample where
   import PIRaTE.Confineable
   import PIRaTE.Sampleable
   import PIRaTE.PhaseFunction.Isotropic (randomIsotropicDirection)
+  import Test.QuickCheck (Arbitrary,arbitrary)
   
   --
   -- random-dependent stuff starts here!
@@ -101,7 +102,11 @@ module PIRaTE.RandomSample where
   randomIsotropicDirections n g =
     replicateM n $ randomIsotropicDirection g
 
+  runRandomSampler :: (Sampleable a b) => a -> Int -> b
   runRandomSampler sampler seedint = runST $ do
     gen <- initialize . singletonU $ fromIntegral seedint
     randomSampleFrom sampler gen
-    
+  
+  instance Arbitrary Vector3 where
+    arbitrary = runRandomSampler expsampler `fmap` arbitrary where
+      expsampler = Exponential3DPointSampler 1.0
