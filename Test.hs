@@ -14,7 +14,9 @@ import PIRaTE.Scene (
     prop_ScatteringDirectionSampler_nonzeroProb,
     prop_SensationDistanceSampler_nonzeroProb,
     prop_EmissionDistanceSampler_nonzeroProb,
-    prop_ScatteringDistanceSampler_nonzeroProb
+    prop_ScatteringDistanceSampler_nonzeroProb,
+    prop_RaycastPointSampler_nonzeroProb,
+    prop_RecursivePathSampler_nonzeroProb
   )
 
 
@@ -35,6 +37,10 @@ tests = [
           testProperty "Sensation  Distance Sampler NonZeroProb" prop_SensationDistanceSampler_nonzeroProb,
           testProperty "Emission   Distance Sampler NonZeroProb" prop_EmissionDistanceSampler_nonzeroProb,
           testProperty "Scattering Distance Sampler NonZeroProb" prop_ScatteringDistanceSampler_nonzeroProb
+        ],
+        testGroup "Recursive Point Samplers" [
+          testProperty "Raycast  Point Sampler NonZeroProb" prop_RaycastPointSampler_nonzeroProb,
+          testProperty "Recursive Path Sampler NonZeroProb" prop_RecursivePathSampler_nonzeroProb
         ]
     ]
 

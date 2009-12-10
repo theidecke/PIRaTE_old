@@ -279,15 +279,15 @@ module PIRaTE.Scene where
   instance IsEPoint SensationPoint  where
     getPoint (SensationPoint  p) = p
     getDirectionSampler scene   _ (SensationPoint  origin) = DirectionSampler $ SensationDirectionSampler  (scene, origin)
-    getDistanceSamplerConstructor (SensationPoint  origin) = DistanceSampler . SensationDistanceSampler
+    getDistanceSamplerConstructor (SensationPoint  target) = DistanceSampler  . SensationDistanceSampler
   instance IsEPoint EmissionPoint   where
     getPoint (EmissionPoint   p) = p
     getDirectionSampler scene   _ (EmissionPoint   origin) = DirectionSampler $ EmissionDirectionSampler   (scene, origin)
-    getDistanceSamplerConstructor (EmissionPoint   origin) = DistanceSampler  . EmissionDistanceSampler
+    getDistanceSamplerConstructor (EmissionPoint   target) = DistanceSampler  . EmissionDistanceSampler
   instance IsEPoint ScatteringPoint where
     getPoint (ScatteringPoint p) = p
     getDirectionSampler scene win (ScatteringPoint origin) = DirectionSampler $ ScatteringDirectionSampler (scene, origin, win)
-    getDistanceSamplerConstructor (ScatteringPoint origin) = DistanceSampler  . ScatteringDistanceSampler
+    getDistanceSamplerConstructor (ScatteringPoint target) = DistanceSampler  . ScatteringDistanceSampler
   instance IsEPoint EPoint where
     getPoint (EPoint ep) = getPoint ep
     getDirectionSampler scene win (EPoint ep) = getDirectionSampler scene win ep
@@ -297,17 +297,37 @@ module PIRaTE.Scene where
     show (EPoint ep) = show ep
 
   data EPoint = forall p . (IsEPoint p, Show p) => EPoint p --EntityPoint
-  data EPointDummy = Sen | Emi | Sca
+  instance Arbitrary EPoint where
+    arbitrary = oneof [fmap (EPoint .  SensationPoint) arbitrary,
+                       fmap (EPoint .   EmissionPoint) arbitrary,
+                       fmap (EPoint . ScatteringPoint) arbitrary]
+
+  data EPointDummy = Sen | Emi | Sca deriving Show
+  instance Arbitrary EPointDummy where
+    arbitrary = oneof [return Sen, return Emi, return Sca]
+  newtype SamplePlan = SamplePlan [EPointDummy] deriving Show
+  instance Arbitrary SamplePlan where
+    arbitrary = frequency
+      [(1, return $ SamplePlan []),
+       (5, fmap (SamplePlan.(:[])) arbitrary)
+      ]
+
   type TPath = [EPoint] --TypedPath
   type ERay = (EPoint, Direction)
 
   samplingNothingError name = error $ "don't know " ++ name ++ " probability of sampling Nothing."
   
   -- Point Samplers
-  newtype RecursivePathSampler = RecursivePathSampler (Scene,EPoint,Direction,[EPointDummy])
+  newtype RecursivePathSampler = RecursivePathSampler (Scene,EPoint,Direction,SamplePlan)
+  instance Show RecursivePathSampler where
+    show (RecursivePathSampler (scene,eorigin,Direction win,SamplePlan dummylist)) =
+      "RecursivePathSampler @" ++ show eorigin ++
+      "->@" ++ showVector3 win ++
+      "to sample:" ++ show dummylist ++
+      "in Scene: " ++ show scene
   instance Sampleable RecursivePathSampler (Maybe TPath) where
-    randomSampleFrom (RecursivePathSampler (scene,startpoint,_,[])) g = return $ Just [startpoint]
-    randomSampleFrom (RecursivePathSampler (scene,startpoint,startwin,sampleplan)) gen =
+    randomSampleFrom (RecursivePathSampler (scene,startpoint,_,SamplePlan [])) g = return $ Just [startpoint]
+    randomSampleFrom (RecursivePathSampler (scene,startpoint,startwin,SamplePlan sampleplan)) gen =
       liftM (liftM (map fst) . sequence) $ foldM (step gen) [Just (startpoint,startwin)] sampleplan
       where step :: Gen s -> [Maybe ERay] -> EPointDummy -> ST s [Maybe ERay]
             step g eraysdone dummy = do
@@ -325,7 +345,7 @@ module PIRaTE.Scene where
                                       wout = fromEdge (newpoint - oldpoint)
                                   return . appenderay $ Just (newepoint,wout)
 
-    sampleProbabilityOf (RecursivePathSampler (scene,startpoint,startwin,sampleplan)) (Just tpath)
+    sampleProbabilityOf (RecursivePathSampler (scene,startpoint,startwin,SamplePlan sampleplan)) (Just tpath)
       | any (==0) edgeprobs = 0
       | otherwise           = product edgeprobs
       where edgeprobs = edgeMap getedgeprob erays
@@ -335,27 +355,50 @@ module PIRaTE.Scene where
             getedgeprob (ep1,d1) (ep2,d2) = sampleProbabilityOf raycastsampler (Just $ getPoint ep2)
               where raycastsampler = RaycastPointSampler (dirsampler,dir2distsampler)
                     dirsampler = getDirectionSampler scene d1 ep1
-                    dir2distsampler dir = (getDistanceSamplerConstructor ep1) (scene,getPoint ep1,dir)
+                    dir2distsampler dir = (getDistanceSamplerConstructor ep2) (scene,getPoint ep1,dir)
 
     sampleProbabilityOf (RecursivePathSampler (scene,startpoint,startwin,sampleplan)) Nothing =
       samplingNothingError "RecursivePathSampler"
 
+  prop_RecursivePathSampler_nonzeroProb :: Scene -> EPoint -> Direction -> SamplePlan -> Int -> Property
+  prop_RecursivePathSampler_nonzeroProb scene startpoint startwin (SamplePlan sampleplan) seedint =
+    isJust mtpath ==> sampleprob > 0
+    where sampleprob = sampleProbabilityOf pointsampler mtpath
+          mtpath = (runRandomSampler pointsampler (seedint+2))::(Maybe TPath)
+          pointsampler = RecursivePathSampler (scene,startpoint,startwin,SamplePlan sampleplan)
+
   raycastbyplan :: Scene -> Direction -> Gen s -> EPoint -> EPointDummy -> ST s (Maybe EPoint)
-  raycastbyplan scene win g (EPoint ep) dummy = liftPoint $ randomSampleFrom (RaycastPointSampler (dirsampler,dir2distsampler)) g
+  raycastbyplan scene win g (EPoint ep) dummy =
+    liftPoint $ randomSampleFrom (RaycastPointSampler (dirsampler,dir2distsampler)) g
     where dirsampler = getDirectionSampler scene win ep
-          dir2distsampler = \dir -> distancesamplerfactory (scene,getPoint ep,dir)
-          distancesamplerfactory = case dummy of
-            Sen -> DistanceSampler . SensationDistanceSampler
-            Emi -> DistanceSampler . EmissionDistanceSampler
-            Sca -> DistanceSampler . ScatteringDistanceSampler
+          dir2distsampler = \dir -> distanceSamplerFactory dummy (scene,getPoint ep,dir)
           liftPoint = liftM (liftM epointfactory)
           epointfactory = case dummy of
             Sen -> EPoint . SensationPoint
             Emi -> EPoint . EmissionPoint
             Sca -> EPoint . ScatteringPoint
 
+  distanceSamplerFactory dummy = case dummy of
+    Sen -> DistanceSampler . SensationDistanceSampler
+    Emi -> DistanceSampler . EmissionDistanceSampler
+    Sca -> DistanceSampler . ScatteringDistanceSampler
+
+  prop_RaycastPointSampler_nonzeroProb :: Scene -> EPoint -> EPointDummy -> Int -> Property
+  prop_RaycastPointSampler_nonzeroProb scene epoint dummy seedint =
+    isJust mpoint ==> sampleprob > 0
+    where sampleprob = sampleProbabilityOf pointsampler mpoint
+          mpoint = (runRandomSampler pointsampler (seedint+2))::(Maybe Point)
+          pointsampler = RaycastPointSampler (dirsampler,dir2distsampler)
+          dirsampler = getDirectionSampler scene win epoint
+          dir2distsampler = \dir -> distanceSamplerFactory dummy (scene,getPoint epoint,dir)
+          win   = (runRandomSampler  winsampler (seedint+1))::Direction
+          origin  = (runRandomSampler originsampler seedint)::Point
+          winsampler = (Isotropic,undefined::Ray)
+          originsampler = Exponential3DPointSampler 1.0
 
   newtype RaycastPointSampler = RaycastPointSampler (DirectionSampler,Direction->DistanceSampler)
+  instance Show RaycastPointSampler where
+    show (RaycastPointSampler (_,_)) = "RaycastPointSampler"
   instance Sampleable RaycastPointSampler (Maybe Point) where
     randomSampleFrom (RaycastPointSampler (dirsampler,dir2distsampler)) g = do
       maybedir <- randomSampleFrom dirsampler g
@@ -374,17 +417,16 @@ module PIRaTE.Scene where
       where dirprob  = sampleProbabilityOf  dirsampler (Just  dir)
             distprob = sampleProbabilityOf distsampler (Just dist)
             distsampler = dir2distsampler dir
-            dir = Direction $ (1/dist) *<> edge
+            dir = Direction $ (1/dist) *<> edge --fromEdge edge
             dist = vmag edge
             edge = p - origin
             origin = dirSamplerOrigin dirsampler
     sampleProbabilityOf (RaycastPointSampler (dirsampler,dir2distsampler)) Nothing =
       samplingNothingError "RaycastPointSampler"
-      
-  
+
   newtype SensationPointSampler = SensationPointSampler Scene
   instance Show SensationPointSampler where
-    show (SensationPointSampler scene) = "SensationPointSampler for Scene: " ++ show scene
+    show (SensationPointSampler scene) = "SensationPointSampler in Scene: " ++ show scene
   instance Sampleable SensationPointSampler (Maybe Point) where
     randomSampleFrom (SensationPointSampler scene) g
       | null sensors = return Nothing
@@ -418,7 +460,7 @@ module PIRaTE.Scene where
 
   newtype EmissionPointSampler = EmissionPointSampler Scene
   instance Show EmissionPointSampler where
-    show (EmissionPointSampler scene) = "EmissionPointSampler for Scene: " ++ show scene
+    show (EmissionPointSampler scene) = "EmissionPointSampler in Scene: " ++ show scene
   instance Sampleable EmissionPointSampler (Maybe Point) where
     randomSampleFrom (EmissionPointSampler scene) g
       | null emitters = return Nothing
@@ -451,7 +493,7 @@ module PIRaTE.Scene where
 
   newtype ScatteringPointSampler = ScatteringPointSampler Scene
   instance Show ScatteringPointSampler where
-    show (ScatteringPointSampler scene) = "ScatteringPointSampler for Scene: " ++ show scene
+    show (ScatteringPointSampler scene) = "ScatteringPointSampler in Scene: " ++ show scene
   instance Sampleable ScatteringPointSampler (Maybe Point) where
     randomSampleFrom (ScatteringPointSampler scene) g
       | null scatterers = return Nothing
@@ -500,7 +542,7 @@ module PIRaTE.Scene where
   newtype SensationDirectionSampler = SensationDirectionSampler (Scene, Point)
   instance Show SensationDirectionSampler where
     show (SensationDirectionSampler (scene,origin)) = "SensationDirectionSampler @" ++ showVector3 origin ++
-                                                      "for Scene: " ++ show scene
+                                                      "in Scene: " ++ show scene
   instance Sampleable SensationDirectionSampler (Maybe Direction) where
     randomSampleFrom (SensationDirectionSampler (scene,origin)) g
       | null sensors = return Nothing
@@ -533,7 +575,7 @@ module PIRaTE.Scene where
   newtype EmissionDirectionSampler = EmissionDirectionSampler (Scene, Point)
   instance Show EmissionDirectionSampler where
     show (EmissionDirectionSampler (scene,origin)) = "EmissionDirectionSampler @" ++ showVector3 origin ++
-                                                     "for Scene: " ++ show scene
+                                                     "in Scene: " ++ show scene
   instance Sampleable EmissionDirectionSampler (Maybe Direction) where
     randomSampleFrom (EmissionDirectionSampler (scene,origin)) g
       | null emitters = return Nothing
@@ -568,7 +610,7 @@ module PIRaTE.Scene where
     show (ScatteringDirectionSampler (scene,origin,Direction dir)) =
       "ScatteringDirectionSampler @" ++ showVector3 origin ++
       "->@" ++ showVector3 dir ++
-      "for Scene: " ++ show scene
+      "in Scene: " ++ show scene
   instance Sampleable ScatteringDirectionSampler (Maybe Direction) where
     randomSampleFrom (ScatteringDirectionSampler (scene,origin,win)) g
       | null scatterers = return Nothing
@@ -611,7 +653,7 @@ module PIRaTE.Scene where
     show (SensationDistanceSampler (scene,origin,Direction dir)) =
       "SensationDistanceSampler @" ++ showVector3 origin ++
       "->@" ++ showVector3 dir ++
-      "for Scene: " ++ show scene
+      "in Scene: " ++ show scene
   instance Sampleable SensationDistanceSampler (Maybe Double) where
     randomSampleFrom (SensationDistanceSampler (scene,origin,direction)) g =
       randomSampleFrom distsampler g
@@ -641,7 +683,7 @@ module PIRaTE.Scene where
     show (EmissionDistanceSampler (scene,origin,Direction dir)) =
       "EmissionDistanceSampler @" ++ showVector3 origin ++
       "->@" ++ showVector3 dir ++
-      "for Scene: " ++ show scene
+      "in Scene: " ++ show scene
   instance Sampleable EmissionDistanceSampler (Maybe Double) where
     randomSampleFrom (EmissionDistanceSampler (scene,origin,direction)) g =
       randomSampleFrom distsampler g
@@ -671,7 +713,7 @@ module PIRaTE.Scene where
     show (ScatteringDistanceSampler (scene,origin,Direction dir)) =
       "ScatteringDistanceSampler @" ++ showVector3 origin ++
       "->@" ++ showVector3 dir ++
-      "for Scene: " ++ show scene
+      "in Scene: " ++ show scene
   instance Sampleable ScatteringDistanceSampler (Maybe Double) where
     randomSampleFrom (ScatteringDistanceSampler (scene,origin,direction)) g =
       randomSampleFrom distsampler g

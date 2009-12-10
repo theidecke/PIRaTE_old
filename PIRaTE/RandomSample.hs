@@ -16,7 +16,7 @@ module PIRaTE.RandomSample where
   import PIRaTE.UtilityFunctions (normsq,infinity)
   import PIRaTE.Confineable
   import PIRaTE.Sampleable
-  import PIRaTE.PhaseFunction.Isotropic (randomIsotropicDirection)
+  import PIRaTE.PhaseFunction.Isotropic (Isotropic(..),randomIsotropicDirection)
   import Test.QuickCheck (Arbitrary,arbitrary)
   
   --
@@ -107,6 +107,9 @@ module PIRaTE.RandomSample where
     gen <- initialize . singletonU $ fromIntegral seedint
     randomSampleFrom sampler gen
   
-  instance Arbitrary Vector3 where
+  instance Arbitrary Point where
     arbitrary = runRandomSampler expsampler `fmap` arbitrary where
       expsampler = Exponential3DPointSampler 1.0
+  
+  instance Arbitrary Direction where
+    arbitrary = runRandomSampler  (Isotropic,undefined::Ray) `fmap` arbitrary

@@ -7,6 +7,7 @@ module PIRaTE.SpatialTypes where
   showVector3 v = "<"++ show (v3x v) ++", "++ show (v3y v) ++", "++ show (v3z v) ++">"
 
   newtype Direction = Direction Vector3
+  unDirection (Direction d) = d
   appliedToDirection f (Direction d) = Direction (f d)
   fromEdge e = Direction (normalize e)
   
