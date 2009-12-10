@@ -78,7 +78,7 @@ module PIRaTE.Mutation where
     mutateWith (ExponentialScatteringNodeTranslation l) scene oldstate g
       | nodecount<=2 = return Nothing
       | otherwise = do
-          rndindex <- randomIntInRange (1,nodecount-1) g
+          rndindex <- randomIntInRange (1,nodecount-2) g
           rndtranslation <- randomSampleFrom (Exponential3DPointSampler l) g
           let newpath = mapAt rndindex (+rndtranslation) oldpath
           return . Just $ mltStateSubstitutePath oldstate newpath
