@@ -132,10 +132,10 @@ module Main where
     
   main = do
     [gridsize,n] <- map read `fmap` getArgs
-    let mutations = [(Mutation $ ExponentialImageNodeTranslation 0.1       , 533)
-                    ,(Mutation $ ExponentialScatteringNodeTranslation 0.1  , 433)
-                    ,(Mutation $ NewEmissionPoint                          ,  33)
-                    ,(Mutation $ RandomPathLength 3.0                      ,   1)
+    let mutations = [(Mutation $ ExponentialImageNodeTranslation 0.1       , 10)
+                    ,(Mutation $ ExponentialScatteringNodeTranslation 0.1  , 10)
+                    ,(Mutation $ NewEmissionPoint                          , 1)
+                    ,(Mutation $ RandomPathLength 3.0                      , 3)
                     ]
         extractor = (\v -> (v3x v, v3y v)) . last . mltStatePath
         --extractor = mltStatePathLength
