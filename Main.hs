@@ -147,9 +147,3 @@ module Main where
     putGridBinnedPhotonCounts gridsize samples
     --putPhotonList samples
     --putPathLengthList samples
-
-  --main = putStrLn "Hi there!"
-    
-  -- ghc -O2 -fexcess-precision -funfolding-use-threshold=48 --make Main.hs -fforce-recomp
-  -- ghc -O2 -fexcess-precision -funfolding-use-threshold=48 --make Main.hs -prof -auto-all -caf-all -fforce-recomp
-  --}
