@@ -5,3 +5,6 @@ runtests : Test
 build : Main
 	ghc -O2 -fexcess-precision -funfolding-use-threshold=48 --make Main.hs
 
+
+buildprofilable : Main
+  ghc -O2 -fexcess-precision -funfolding-use-threshold=48 --make Main.hs -prof -auto-all -caf-all -fforce-recomp

@@ -24,7 +24,8 @@ module Main where
       ExponentialScatteringNodeTranslation(..),
       ExponentialImageNodeTranslation(..),
       IncDecPathLength(..),
-      NewEmissionPoint(..)
+      NewEmissionPoint(..),
+      RandomPathLength(..)
     )
 
 
@@ -32,7 +33,7 @@ module Main where
 
   testEntities = let cont1 = Container $ Sphere (Vector3 0.3 0 0) 0.5
                      cont2 = Container $ Sphere (Vector3 (-0.5) 0 0) 0.3
-                     cont3 = Container $ Sphere (Vector3 0.2 0.1 0.15) 0.1
+                     cont3 = Container $ Sphere (Vector3 0.2 0.1 (-0.15)) 0.1
                      cont4 = Container $ Sphere (Vector3 (-0.35) (-0.7) 0.0) 0.25
                      mat1 = toHomogenousInteractingMaterial  3  4 (1,PhaseFunction Isotropic)
                      mat2 = toHomogenousInteractingMaterial  0  7 (1,PhaseFunction Isotropic)
@@ -42,9 +43,9 @@ module Main where
                      ent2 = Entity cont2 [mat2]
                      ent3 = Entity cont3 [mat3]
                      ent4 = Entity cont4 [mat4]
-                     sensorcontainer = Container $ Sphere (Vector3 0 0 (-10)) 1.0
+                     sensorcontainer = Container $ Sphere (Vector3 0 0 (-3)) 1.1
                      sensormaterial = toHomogenousSensingMaterial 1.0 (1, PhaseFunction $ fromApexAngle sensorangle, PathLength . mltStatePathLength)
-                     sensorangle = 1 * degree
+                     sensorangle = 1 * arcmin
                      sensorentity = Entity sensorcontainer [sensormaterial]
                      lightsourcecontainer = Container $ Sphere (Vector3 0 0 0) 0.01
                      lightsourcematerial = toHomogenousEmittingMaterial 1.0 (1, PhaseFunction Isotropic)
@@ -120,27 +121,29 @@ module Main where
     putStrLn $ "radialphotoncounts=" ++ init (showListForMathematica show photonbincounts) ++ ";\n"
   
   putPhotonList = putStrLn.showSamplesForMathematica
+  
+  putPathLengthList = putStrLn.show.reduceList where
+    reduceList :: [Int] -> [Int]
+    reduceList (x:y:xs)
+      | x==y      = reduceList (x:xs)
+      | otherwise = x:reduceList (y:xs)
+    reduceList (x:[]) = x:[]
+    reduceList [] = []
     
   main = do
     [gridsize,n] <- map read `fmap` getArgs
-    let mutations = [(Mutation $ ExponentialScatteringNodeTranslation 0.1 , 3),
-                     (Mutation $ ExponentialImageNodeTranslation 0.3      , 4),
-                     (Mutation $ NewEmissionPoint                         , 2),
-                     (Mutation $ IncDecPathLength 0.1                     , 3)]
+    let mutations = [(Mutation $ ExponentialImageNodeTranslation 0.1       , 533)
+                    ,(Mutation $ ExponentialScatteringNodeTranslation 0.1  , 433)
+                    ,(Mutation $ NewEmissionPoint                          ,  33)
+                    ,(Mutation $ RandomPathLength 3.0                      ,   1)
+                    ]
         extractor = (\v -> (v3x v, v3y v)) . last . mltStatePath
         --extractor = mltStatePathLength
         chunksize = min 2500 n
-        sigma = 1
-        scene = standardScene sigma --testScene
-        samples = mltAction scene mutations extractor 19912 n chunksize
+        sigma = 1.0
+        scene = testScene --standardScene sigma
+        samples = mltAction scene mutations extractor 9811372 n chunksize
     --putRadiallyBinnedPhotonCounts gridsize samples
     putGridBinnedPhotonCounts gridsize samples
     --putPhotonList samples
-    --putStrLn.show $ samples
-
-    
-  --main = putStrLn "Hi there!"
-    
-  -- ghc -O2 -fexcess-precision -funfolding-use-threshold=48 --make Main.hs -fforce-recomp
-  -- ghc -O2 -fexcess-precision -funfolding-use-threshold=48 --make Main.hs -prof -auto-all -caf-all -fforce-recomp
-  --}
+    --putPathLengthList samples

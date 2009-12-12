@@ -70,6 +70,19 @@ module PIRaTE.RandomSample where
   randomWeightedChoices weightedchoices n g =
     replicateM n $ randomWeightedChoice weightedchoices g
 
+  newtype GeometricDistribution = GeometricDistribution Double
+  geometricDistributionFromMean mu = GeometricDistribution (1 / (mu + 1))
+  instance Sampleable GeometricDistribution Int where
+    randomSampleFrom (GeometricDistribution p') g = geometricSample' p' 0 g where
+      geometricSample' p n g = do
+        u1 <- uniform g
+        let bernoullisuccess = (u1::Double) <= p
+        if bernoullisuccess
+          then return n
+          else geometricSample' p (n+1) g
+
+    sampleProbabilityOf (GeometricDistribution p) n = (1-p)^n * p    
+
   -- generates a d-distributed sample
   distributionSample d g = do
     u1 <- uniform g
