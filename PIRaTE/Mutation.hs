@@ -76,9 +76,9 @@ module PIRaTE.Mutation where
     show (ExponentialScatteringNodeTranslation lambda) = "ExponentialScatteringNodeTranslation(" ++ (show lambda) ++ ")"
   instance Mutating ExponentialScatteringNodeTranslation where
     mutateWith (ExponentialScatteringNodeTranslation l) scene oldstate g
-      | nodecount<=2 = return Nothing
+      | nodecount<=3 = return Nothing
       | otherwise = do
-          rndindex <- randomIntInRange (1,nodecount-2) g
+          rndindex <- randomIntInRange (1,nodecount-3) g
           rndtranslation <- randomSampleFrom (Exponential3DPointSampler l) g
           let newpath = mapAt rndindex (+rndtranslation) oldpath
           return . Just $ mltStateSubstitutePath oldstate newpath
@@ -169,7 +169,7 @@ module PIRaTE.Mutation where
   instance Mutating IncDecPathLength where
     mutateWith (IncDecPathLength l) scene oldstate g = do
       u <- uniform g
-      let coinflip = u::Bool
+      let coinflip = (u::Double)<=0.5
           oldpath = mltStatePath oldstate
           (eminode,scatternodes,sensnode) = trisect oldpath
           scatternodecount = length scatternodes
