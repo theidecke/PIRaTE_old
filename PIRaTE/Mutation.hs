@@ -7,12 +7,12 @@ module PIRaTE.Mutation where
   import Statistics.RandomVariate (Gen,uniform)
   import Control.Monad (liftM)
   import Control.Monad.ST (ST)
-  import PIRaTE.SpatialTypes (MLTState,mltStatePath,mltStatePathLength,mltStateSubstitutePath,pathNodeCount)
+  import PIRaTE.SpatialTypes (MLTState,mltStatePath,mltStatePathLength,mltStateSubstitutePath,pathNodeCount,pathLength)
   import PIRaTE.UtilityFunctions (mapAt)
   import PIRaTE.Sampleable
   import PIRaTE.RandomSample
   import PIRaTE.Scene
-  import PIRaTE.Path (measurementContribution,trisect)
+  import PIRaTE.Path (measurementContribution,trisect,RaytracingPathSampler(..))
   
   -- the standard (possibly wasteful) way to compute the acceptance probability
   -- f x should return the probability density for state x
@@ -98,7 +98,7 @@ module PIRaTE.Mutation where
         let newsensorpoint = (last pathtail) + rndtranslation
             newesensorpoint = EPoint . SensationPoint $ newsensorpoint
             dummy = if nodecount==2 then Emi else Sca
-        maybenewreversetail <- randomSampleFrom (RecursivePathSampler (scene,newesensorpoint,undefined,[dummy])) g
+        maybenewreversetail <- randomSampleFrom (RecursivePathSampler (scene,newesensorpoint,undefined,SamplePlan [dummy])) g
         if (isNothing maybenewreversetail)
           then return Nothing
           else do
@@ -120,7 +120,7 @@ module PIRaTE.Mutation where
         expImgNodeTrlTransitionProbability scene lambda oldstate newstate =
            sensprob * ntlprob
           where ntlprob = sampleProbabilityOf recsampler recsample
-                recsampler = RecursivePathSampler (scene,newesensorpoint,undefined,[dummy])
+                recsampler = RecursivePathSampler (scene,newesensorpoint,undefined,SamplePlan [dummy])
                 recsample = Just [newesensorpoint, epfactory newntl]
                 newesensorpoint = EPoint $ SensationPoint newsens
                 dummy = if newnodecount==2 then Emi else Sca
@@ -135,16 +135,32 @@ module PIRaTE.Mutation where
                 newpath = mltStatePath newstate
 
 
-  data ResampleSensorDirection = ResampleSensorDirection
-  instance Show ResampleSensorDirection where
-    show ResampleSensorDirection = "ResampleSensorDirection"
-  instance Mutating ResampleSensorDirection where
-    mutateWith ResampleSensorDirection scene oldstate g =
-      do return undefined
+  data RandomPathLength = RandomPathLength Double
+  instance Show RandomPathLength where
+    show (RandomPathLength l) = "RandomPathLength(" ++ (show l) ++ ")"
+  instance Mutating RandomPathLength where
+    mutateWith (RandomPathLength l) scene oldstate g = do
+        geomdistsample <- randomSampleFrom geomdist g
+        let newpathlength = 1 + geomdistsample
+            simplepathsampler = RaytracingPathSampler (scene,newpathlength)
+        mnewpath <- randomSampleFrom simplepathsampler g
+        if (isNothing mnewpath)
+          then return Nothing
+          else return . Just $ mltStateSubstitutePath oldstate (fromJust mnewpath)
+      where geomdist = geometricDistributionFromMean (l-1)
 
-    acceptanceProbabilityOf ResampleSensorDirection scene =
-      defautAcceptanceProbability (measurementContribution scene) t
-      where t = undefined
+    acceptanceProbabilityOf (RandomPathLength l) scene oldstate newstate =
+      defautAcceptanceProbability (measurementContribution scene) t oldstate newstate where
+        t _ newstate = pathlengthprob * simplepathprob where
+          simplepathprob = sampleProbabilityOf simplepathsampler (Just newpath)
+          simplepathsampler = RaytracingPathSampler (scene,newpathlength)
+          pathlengthprob = sampleProbabilityOf geomdist geomdistsample
+          geomdistsample = newpathlength - 1
+          geomdist = geometricDistributionFromMean (l-1)
+          newpathlength = pathLength newpath
+          newpath = mltStatePath newstate        
+          
+        
       
 
   data IncDecPathLength = IncDecPathLength Double

@@ -352,10 +352,10 @@ module PIRaTE.Scene where
             erays = (startpoint,startwin):eraystail
             eraystail = zip (tail tpath) dirtail
             dirtail = edgeMap (\u v -> fromEdge (v-u)) $ map getPoint tpath
-            getedgeprob (ep1,d1) (ep2,d2) = sampleProbabilityOf raycastsampler (Just $ getPoint ep2)
+            getedgeprob (eorigin,d1) (etarget,d2) = sampleProbabilityOf raycastsampler (Just $ getPoint etarget)
               where raycastsampler = RaycastPointSampler (dirsampler,dir2distsampler)
-                    dirsampler = getDirectionSampler scene d1 ep1
-                    dir2distsampler dir = (getDistanceSamplerConstructor ep2) (scene,getPoint ep1,dir)
+                    dirsampler = getDirectionSampler scene d1 eorigin
+                    dir2distsampler dir = (getDistanceSamplerConstructor etarget) (scene,getPoint eorigin,dir)
 
     sampleProbabilityOf (RecursivePathSampler (scene,startpoint,startwin,sampleplan)) Nothing =
       samplingNothingError "RecursivePathSampler"
