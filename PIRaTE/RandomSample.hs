@@ -1,6 +1,8 @@
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE TypeSynonymInstances #-}
+{-# LANGUAGE ExistentialQuantification #-}
+{-# LANGUAGE FlexibleContexts #-}
 
 module PIRaTE.RandomSample where
   import Control.Monad
@@ -83,6 +85,21 @@ module PIRaTE.RandomSample where
 
     sampleProbabilityOf (GeometricDistribution p) n = (1-p)^n * p    
 
+  newtype BinomialDistribution = BinomialDistribution (Int,Double) deriving Show
+  binomialDistributionFromNMean n mean = BinomialDistribution (n,p) where
+    p = mean / fromIntegral n
+  instance Sampleable BinomialDistribution Int where
+    randomSampleFrom (BinomialDistribution (n,p)) g = do
+      us <- replicateM n . uniform $ g
+      let successes = length . filter (<=p) $ (us::[Double])
+      return successes
+    sampleProbabilityOf (BinomialDistribution (n,p)) k =
+        (fromIntegral $ binomial n k) * p^k * (1-p)^(n-k)
+  
+  
+  binomial n k = foldl (\i (l,m) -> i*l `div` m) 1 $ zipWith (,) [n-k+1..n] [1..k]
+  
+  data DiscreteDistribution = forall s. (Sampleable s Int) => DiscreteDistribution s
   -- generates a d-distributed sample
   distributionSample d g = do
     u1 <- uniform g
