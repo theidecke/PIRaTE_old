@@ -1,4 +1,7 @@
 {-# LANGUAGE ExistentialQuantification #-}
+{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE ParallelListComp #-}
 
 module PIRaTE.Mutation where
   import Data.Vector (Vector3(..),(*<>),vmag)
@@ -7,20 +10,30 @@ module PIRaTE.Mutation where
   import Statistics.RandomVariate (Gen,uniform)
   import Control.Monad (liftM)
   import Control.Monad.ST (ST)
-  import PIRaTE.SpatialTypes (MLTState,mltStatePath,mltStatePathLength,mltStateSubstitutePath,pathNodeCount,pathLength)
+  import PIRaTE.SpatialTypes
   import PIRaTE.UtilityFunctions (mapAt)
   import PIRaTE.Sampleable
   import PIRaTE.RandomSample
   import PIRaTE.Scene
-  import PIRaTE.Path (measurementContribution,trisect,RaytracingPathSampler(..))
+  import PIRaTE.Path (measurementContribution,trisect,RaytracingPathSampler(..),LightSubPathSampler(..),SensorSubPathSampler(..))
+  
+  import Debug.Trace
   
   -- the standard (possibly wasteful) way to compute the acceptance probability
   -- f x should return the probability density for state x
   -- t x y should return the transition probability from state x to state y
   defautAcceptanceProbability :: (a -> Double) -> (a -> a -> Double) -> a -> a -> Double
+  defautAcceptanceProbability f t oldstate newstate = let
+      a = (\x -> trace ("f_new:"++show x) x) $ f newstate
+      b = (\x -> trace ("f_old:"++show x) x) $ f oldstate
+      c = (\x -> trace ("t_n->o:"++show x) x) $ t newstate oldstate
+      d = (\x -> trace ("t_o->n:"++show x) x) $ t oldstate newstate
+    in (a*c)/(b*d)
+  
+  {--defautAcceptanceProbability :: (a -> Double) -> (a -> a -> Double) -> a -> a -> Double
   defautAcceptanceProbability f t oldstate newstate =
     (/) ((f newstate) * (t newstate oldstate))
-        ((f oldstate) * (t oldstate newstate))
+        ((f oldstate) * (t oldstate newstate))--}
         
   translationInvariant _ _ = 1
         
@@ -160,8 +173,70 @@ module PIRaTE.Mutation where
           newpathlength = pathLength newpath
           newpath = mltStatePath newstate        
           
-        
-      
+  data BidirPathSub = BidirPathSub Double
+  instance Show BidirPathSub where
+    show (BidirPathSub mu) = "BidirPathSub:("++show mu++")"
+  instance Mutating BidirPathSub where
+    mutateWith (BidirPathSub mu) scene oldstate g = do
+        let meandeletednodes = mu
+            deldist = DelBoundsDist (n,meandeletednodes)
+        (r,s) <- randomSampleFrom deldist g
+        let kd = n - r - s
+            adddist = AddBoundsDist (fromIntegral kd)
+        (i,j) <- randomSampleFrom adddist g
+        let lightstartpath  = take r oldpath
+            sensorstartpath = take s (reverse oldpath)
+            lightsubpathsampler  = LightSubPathSampler  (scene, lightstartpath,i)
+            sensorsubpathsampler = SensorSubPathSampler (scene,sensorstartpath,j)
+        mlightsubpath <- randomSampleFrom lightsubpathsampler g
+        if (isNothing mlightsubpath)
+          then return Nothing
+          else do
+            msensorsubpath <- randomSampleFrom sensorsubpathsampler g
+            if (isNothing msensorsubpath)
+              then return Nothing
+              else do
+                let lightsubpath  = fromJust (mlightsubpath::(Maybe Path))
+                    sensorsubpath = fromJust (msensorsubpath::(Maybe Path))
+                    newpath = lightstartpath ++ (tail lightsubpath) ++ (reverse $
+                              sensorsubpath  ++ (tail sensorsubpath))
+                return . Just $ mltStateSubstitutePath oldstate newpath
+      where n = pathLength oldpath
+            oldpath = mltStatePath oldstate
+
+    acceptanceProbabilityOf (BidirPathSub mu) scene =
+      defautAcceptanceProbability (measurementContribution scene) (bidirPathSubTransProb scene mu) where
+  
+  bidirPathSubTransProb scene mu oldstate newstate = rsprob * (sum $ zipWith (*) ijprobs subpathprobs) where
+    rsprob = sampleProbabilityOf deldist (r,s)
+    subpathprobs = [(sampleProbabilityOf (LightSubPathSampler  (scene, lightstartpath,i))  lightsubpath)
+                   *(sampleProbabilityOf (SensorSubPathSampler (scene, lightstartpath,j)) sensorsubpath)
+                   | (i,j)<-ijs
+                   | (lightsubpath,sensorsubpath)<-subpathpairs]
+    ijprobs = [sampleProbabilityOf adddist ij | ij <- ijs]
+    subpathpairs::[(Maybe Path, Maybe Path)]
+    subpathpairs = [(Just $ take (i+neweminodecount) overlappingmiddlesubpath,
+           Just . reverse $ drop (i+neweminodecount) overlappingmiddlesubpath) | (i,_) <- ijs]
+    ijs = [(i,ka' - i) | i<-[0..ka']]
+    deldist = DelBoundsDist (n,meandeletednodes)
+    adddist = AddBoundsDist (fromIntegral kd)
+    kd = n - r - s
+    ka' = ka - neweminodecount - newsennodecount
+    ka = n' - n + kd
+    neweminodecount = if r==0 then 1 else 0
+    newsennodecount = if s==0 then 1 else 0
+    middlesubpath = init . tail $ overlappingmiddlesubpath
+    overlappingmiddlesubpath = drop (r-1) . reverse . drop (s-1) $ reverse newpath
+    r = length lightstartpath
+    s = length sensorstartpath
+    meandeletednodes = mu
+    lightstartpath  = map fst . takeWhile (\(x,y)->x==y) $ zip oldpath newpath
+    sensorstartpath = map fst . takeWhile (\(x,y)->x==y) $ zip (reverse oldpath) (reverse newpath)
+    n  = pathNodeCount oldpath
+    n' = pathNodeCount newpath
+    oldpath = mltStatePath oldstate
+    newpath = mltStatePath newstate
+
 
   data IncDecPathLength = IncDecPathLength Double
   instance Show IncDecPathLength where

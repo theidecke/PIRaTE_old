@@ -118,3 +118,147 @@ module PIRaTE.Path where
         if (measurementContribution scene completepath)==0
           then randomPathOfLength scene n g
           else return completepath
+
+
+  newtype LightSubPathSampler = LightSubPathSampler (Scene,Path,Int)
+  instance Sampleable LightSubPathSampler (Maybe Path) where
+    randomSampleFrom (LightSubPathSampler (scene,startpath,scatternodecount)) g
+      | null startpath = do
+          maybeemissionpoint <- randomSampleFrom (EmissionPointSampler scene) g
+          if (isNothing maybeemissionpoint)
+            then return Nothing
+            else do
+              let temissionpoint = EPoint . EmissionPoint $ fromJust maybeemissionpoint
+                  recsampler = RecursivePathSampler (scene,temissionpoint,undefined,sampleplan)
+              mrecpoints <- randomSampleFrom recsampler g
+              if (isNothing (mrecpoints::(Maybe TPath)))
+                then return Nothing
+                else do
+                  let lightsubpath = map getPoint . fromJust $ mrecpoints
+                  return . Just $ lightsubpath
+      | tail startpath == [] = do
+          let emissionpoint = head startpath
+              temissionpoint = EPoint . EmissionPoint $ emissionpoint
+              recsampler = RecursivePathSampler (scene,temissionpoint,undefined,sampleplan)
+          mrecpoints <- randomSampleFrom recsampler g
+          if (isNothing mrecpoints)
+            then return Nothing
+            else do
+              let lightsubpath = map getPoint . fromJust $ (mrecpoints::(Maybe TPath))
+              return . Just $ lightsubpath
+      | otherwise = do
+          -- we have at least two nodes (and the last one is a scattering one)
+          let [lastscatterpoint,ntlastscatterpoint] = take 2 (reverse startpath)
+              startpoint = EPoint . ScatteringPoint $ lastscatterpoint
+              startdir = fromEdge $ lastscatterpoint - ntlastscatterpoint
+              recsampler = RecursivePathSampler (scene,startpoint,startdir,sampleplan)
+          mrecpoints <- randomSampleFrom recsampler g
+          if (isNothing (mrecpoints::(Maybe TPath)))
+            then return Nothing
+            else do
+              let lightsubpath = (init startpath)++(map getPoint . fromJust $ mrecpoints)
+              return . Just $ lightsubpath
+      where sampleplan = SamplePlan $ replicate scatternodecount Sca
+
+    sampleProbabilityOf (LightSubPathSampler _) Nothing = undefined
+    sampleProbabilityOf (LightSubPathSampler (scene,startpath,scatternodecount)) (Just lightsubpath)
+      | null startpath = let
+          emissionpointprob = sampleProbabilityOf (EmissionPointSampler scene) (Just emissionpoint)
+          scatterpointsprob = sampleProbabilityOf recsampler (Just tpath)
+          recsampler = RecursivePathSampler (scene,temissionpoint,undefined,sampleplan)
+          temissionpoint = EPoint . EmissionPoint $ emissionpoint
+          (emissionpoint:scatterpoints) = lightsubpath
+        in emissionpointprob * scatterpointsprob
+      | tail startpath == [] = let
+          scatterpointsprob = sampleProbabilityOf recsampler (Just tpath)
+          emissionpoint = head startpath
+          temissionpoint = EPoint . EmissionPoint $ emissionpoint
+          recsampler = RecursivePathSampler (scene,temissionpoint,undefined,sampleplan)
+        in scatterpointsprob
+      | otherwise = let
+          scatterpointsprob = sampleProbabilityOf recsampler (Just tpath)
+          [lastscatterpoint,ntlastscatterpoint] = take 2 (reverse startpath)
+          startpoint = EPoint . ScatteringPoint $ lastscatterpoint
+          startdir = fromEdge $ lastscatterpoint - ntlastscatterpoint
+          recsampler = RecursivePathSampler (scene,startpoint,startdir,sampleplan)
+        in scatterpointsprob
+      where sampleplan = SamplePlan $ replicate scatternodecount Sca
+            tpath = lightSubpathFromPntList recpoints
+            recpoints = drop (pathNodeCount startpath - 1) lightsubpath
+
+
+  lightSubpathFromPntList (p:ps) = (EPoint $ EmissionPoint p) : fplTail ps where
+    fplTail [] = []
+    fplTail (p:ps) = (EPoint $ ScatteringPoint p) : fplTail ps
+
+
+  newtype SensorSubPathSampler = SensorSubPathSampler (Scene,Path,Int)
+  instance Sampleable SensorSubPathSampler (Maybe Path) where
+    randomSampleFrom (SensorSubPathSampler (scene,startpath,scatternodecount)) g
+      | null startpath = do
+          maybesensationpoint <- randomSampleFrom (SensationPointSampler scene) g
+          if (isNothing maybesensationpoint)
+            then return Nothing
+            else do
+              let tsensationpoint = EPoint . SensationPoint $ fromJust maybesensationpoint
+                  recsampler = RecursivePathSampler (scene,tsensationpoint,undefined,sampleplan)
+              mrecpoints <- randomSampleFrom recsampler g
+              if (isNothing (mrecpoints::(Maybe TPath)))
+                then return Nothing
+                else do
+                  let sensorsubpath = map getPoint . fromJust $ mrecpoints
+                  return . Just $ sensorsubpath
+      | tail startpath == [] = do
+          let sensationpoint = head startpath
+              tsensationpoint = EPoint . SensationPoint $ sensationpoint
+              recsampler = RecursivePathSampler (scene,tsensationpoint,undefined,sampleplan)
+          mrecpoints <- randomSampleFrom recsampler g
+          if (isNothing mrecpoints)
+            then return Nothing
+            else do
+              let sensorsubpath = map getPoint . fromJust $ (mrecpoints::(Maybe TPath))
+              return . Just $ sensorsubpath
+      | otherwise = do
+          -- we have at least two nodes (and the last one is a scattering one)
+          let [lastscatterpoint,ntlastscatterpoint] = take 2 (reverse startpath)
+              startpoint = EPoint . ScatteringPoint $ lastscatterpoint
+              startdir = fromEdge $ lastscatterpoint - ntlastscatterpoint
+              recsampler = RecursivePathSampler (scene,startpoint,startdir,sampleplan)
+          mrecpoints <- randomSampleFrom recsampler g
+          if (isNothing (mrecpoints::(Maybe TPath)))
+            then return Nothing
+            else do
+              let sensorsubpath = (init startpath)++(map getPoint . fromJust $ mrecpoints)
+              return . Just $ sensorsubpath
+      where sampleplan = SamplePlan $ replicate scatternodecount Sca
+
+    sampleProbabilityOf (SensorSubPathSampler _) Nothing = undefined
+    sampleProbabilityOf (SensorSubPathSampler (scene,startpath,scatternodecount)) (Just sensorsubpath)
+      | null startpath = let
+          sensationpointprob = sampleProbabilityOf (SensationPointSampler scene) (Just sensationpoint)
+          scatterpointsprob = sampleProbabilityOf recsampler (Just tpath)
+          recsampler = RecursivePathSampler (scene,tsensationpoint,undefined,sampleplan)
+          tsensationpoint = EPoint . SensationPoint $ sensationpoint
+          (sensationpoint:scatterpoints) = sensorsubpath
+        in sensationpointprob * scatterpointsprob
+      | tail startpath == [] = let
+          scatterpointsprob = sampleProbabilityOf recsampler (Just tpath)
+          sensationpoint = head startpath
+          tsensationpoint = EPoint . SensationPoint $ sensationpoint
+          recsampler = RecursivePathSampler (scene,tsensationpoint,undefined,sampleplan)
+        in scatterpointsprob
+      | otherwise = let
+          scatterpointsprob = sampleProbabilityOf recsampler (Just tpath)
+          [lastscatterpoint,ntlastscatterpoint] = take 2 (reverse startpath)
+          startpoint = EPoint . ScatteringPoint $ lastscatterpoint
+          startdir = fromEdge $ lastscatterpoint - ntlastscatterpoint
+          recsampler = RecursivePathSampler (scene,startpoint,startdir,sampleplan)
+        in scatterpointsprob
+      where sampleplan = SamplePlan $ replicate scatternodecount Sca
+            tpath = sensorSubpathFromPntList recpoints
+            recpoints = drop (pathNodeCount startpath - 1) sensorsubpath
+
+
+  sensorSubpathFromPntList (p:ps) = (EPoint $ SensationPoint p) : fplTail ps where
+    fplTail [] = []
+    fplTail (p:ps) = (EPoint $ ScatteringPoint p) : fplTail ps

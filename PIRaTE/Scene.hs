@@ -313,6 +313,14 @@ module PIRaTE.Scene where
       ]
 
   type TPath = [EPoint] --TypedPath
+  fromPointList :: Path -> TPath
+  fromPointList [] = error "fromPointList: path should have at least two vertices."
+  fromPointList (_:[]) = fromPointList []
+  fromPointList (p:ps) = (EPoint $ EmissionPoint p) : fplTail ps where
+    fplTail (p:[]) = (EPoint $  SensationPoint p) : []
+    fplTail (p:ps) = (EPoint $ ScatteringPoint p) : fplTail ps
+  toPointList :: TPath -> Path
+  toPointList = map getPoint
   type ERay = (EPoint, Direction)
 
   samplingNothingError name = error $ "don't know " ++ name ++ " probability of sampling Nothing."
@@ -424,6 +432,7 @@ module PIRaTE.Scene where
     sampleProbabilityOf (RaycastPointSampler (dirsampler,dir2distsampler)) Nothing =
       samplingNothingError "RaycastPointSampler"
 
+  --data PointSampler = forall s . (Sampleable s (Maybe Point)) => PointSampler s
   newtype SensationPointSampler = SensationPointSampler Scene
   instance Show SensationPointSampler where
     show (SensationPointSampler scene) = "SensationPointSampler in Scene: " ++ show scene

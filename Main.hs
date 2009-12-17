@@ -122,7 +122,8 @@ module Main where
   
   putPhotonList = putStrLn.showSamplesForMathematica
   
-  putPathLengthList = putStrLn.show.reduceList where
+  putPathLengthList :: [Int] -> IO ()
+  putPathLengthList = putStrLn.("pathlengths="++).showListForMathematica show where
     reduceList :: [Int] -> [Int]
     reduceList (x:y:xs)
       | x==y      = reduceList (x:xs)
@@ -132,17 +133,18 @@ module Main where
     
   main = do
     [gridsize,n] <- map read `fmap` getArgs
-    let mutations = [(Mutation $ ExponentialImageNodeTranslation 0.1       , 533)
-                    ,(Mutation $ ExponentialScatteringNodeTranslation 0.1  , 433)
-                    ,(Mutation $ NewEmissionPoint                          ,  33)
-                    ,(Mutation $ RandomPathLength 3.0                      ,   1)
+    let mutations = --[(Mutation $ RandomPathLength 10.0, 1)]
+                    [(Mutation $ ExponentialImageNodeTranslation 0.1       , 10)
+                    ,(Mutation $ ExponentialScatteringNodeTranslation 0.1  , 10)
+                    ,(Mutation $ RandomPathLength 30.0                     , 3)
+                    ,(Mutation $ NewEmissionPoint                          , 1)
                     ]
         extractor = (\v -> (v3x v, v3y v)) . last . mltStatePath
         --extractor = mltStatePathLength
         chunksize = min 2500 n
-        sigma = 1.0
-        scene = testScene --standardScene sigma
-        samples = mltAction scene mutations extractor 9811372 n chunksize
+        sigma = 10.0
+        scene = standardScene sigma --testScene
+        samples = mltAction scene mutations extractor 987792 n chunksize
     --putRadiallyBinnedPhotonCounts gridsize samples
     putGridBinnedPhotonCounts gridsize samples
     --putPhotonList samples
