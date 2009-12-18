@@ -103,7 +103,9 @@ module PIRaTE.RandomSample where
           then return n
           else geometricSample' p (n+1) g
 
-    sampleProbabilityOf (GeometricDistribution p) n = (1-p)^n * p    
+    sampleProbabilityOf (GeometricDistribution p) n
+      | n>=0      = (1-p)^n * p
+      | otherwise = 0
 
   newtype BinomialDistribution = BinomialDistribution (Int,Double) deriving Show
   binomialDistributionFromNMean n mean = BinomialDistribution (n,p) where
@@ -113,8 +115,9 @@ module PIRaTE.RandomSample where
       us <- replicateM n . uniform $ g
       let successes = length . filter (<=p) $ (us::[Double])
       return successes
-    sampleProbabilityOf (BinomialDistribution (n,p)) k =
-      (fromIntegral $ binomial n k) * p^k * (1-p)^(n-k)
+    sampleProbabilityOf (BinomialDistribution (n,p)) k
+      | k>=0 && k<=n = (fromIntegral $ binomial n k) * p^k * (1-p)^(n-k)
+      | otherwise    = 0
   
   binomial n k = foldl (\i (l,m) -> i*l `div` m) 1 $ zipWith (,) [n-k+1..n] [1..k]
 

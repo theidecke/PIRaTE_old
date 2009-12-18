@@ -25,7 +25,8 @@ module Main where
       ExponentialImageNodeTranslation(..),
       IncDecPathLength(..),
       NewEmissionPoint(..),
-      RandomPathLength(..)
+      RandomPathLength(..),
+      BidirPathSub(..)
     )
 
 
@@ -133,18 +134,21 @@ module Main where
     
   main = do
     [gridsize,n] <- map read `fmap` getArgs
-    let mutations = --[(Mutation $ RandomPathLength 10.0, 1)]
-                    [(Mutation $ ExponentialImageNodeTranslation 0.1       , 10)
-                    ,(Mutation $ ExponentialScatteringNodeTranslation 0.1  , 10)
-                    ,(Mutation $ RandomPathLength 30.0                     , 3)
-                    ,(Mutation $ NewEmissionPoint                          , 1)
+    let mutations1 = [(Mutation $ RandomPathLength 10.0, 1)]
+        mutations2 = [(Mutation $ ExponentialImageNodeTranslation 0.1       , 10)
+                     ,(Mutation $ ExponentialScatteringNodeTranslation 0.1  , 10)
+                     ,(Mutation $ RandomPathLength 20.0                     , 3)
+                     ,(Mutation $ NewEmissionPoint                          , 1)
                     ]
+        mutations3 = [(Mutation $ ExponentialImageNodeTranslation 0.1       , 10)
+                     ,(Mutation $ BidirPathSub 2.5                          , 10)
+                     ]
         extractor = (\v -> (v3x v, v3y v)) . last . mltStatePath
         --extractor = mltStatePathLength
         chunksize = min 2500 n
         sigma = 10.0
         scene = standardScene sigma --testScene
-        samples = mltAction scene mutations extractor 987792 n chunksize
+        samples = mltAction scene mutations3 extractor 987792 n chunksize
     --putRadiallyBinnedPhotonCounts gridsize samples
     putGridBinnedPhotonCounts gridsize samples
     --putPhotonList samples

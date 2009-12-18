@@ -17,18 +17,19 @@ module PIRaTE.Mutation where
   import PIRaTE.Scene
   import PIRaTE.Path (measurementContribution,trisect,RaytracingPathSampler(..),LightSubPathSampler(..),SensorSubPathSampler(..))
   
-  import Debug.Trace
+  --import Debug.Trace
   
   -- the standard (possibly wasteful) way to compute the acceptance probability
   -- f x should return the probability density for state x
   -- t x y should return the transition probability from state x to state y
   defautAcceptanceProbability :: (a -> Double) -> (a -> a -> Double) -> a -> a -> Double
-  defautAcceptanceProbability f t oldstate newstate = let
-      a = (\x -> trace ("f_new:"++show x) x) $ f newstate
-      b = (\x -> trace ("f_old:"++show x) x) $ f oldstate
-      c = (\x -> trace ("t_n->o:"++show x) x) $ t newstate oldstate
-      d = (\x -> trace ("t_o->n:"++show x) x) $ t oldstate newstate
-    in (a*c)/(b*d)
+  defautAcceptanceProbability f t oldstate newstate
+    | a==0 || c==0 = 0
+    | otherwise = (a*c)/(b*d)
+    where a = f newstate
+          b = f oldstate
+          c = t newstate oldstate
+          d = t oldstate newstate
   
   {--defautAcceptanceProbability :: (a -> Double) -> (a -> a -> Double) -> a -> a -> Double
   defautAcceptanceProbability f t oldstate newstate =
@@ -198,34 +199,38 @@ module PIRaTE.Mutation where
               else do
                 let lightsubpath  = fromJust (mlightsubpath::(Maybe Path))
                     sensorsubpath = fromJust (msensorsubpath::(Maybe Path))
-                    newpath = lightstartpath ++ (tail lightsubpath) ++ (reverse $
-                              sensorsubpath  ++ (tail sensorsubpath))
+                    newpath = lightsubpath ++ (reverse sensorsubpath)
                 return . Just $ mltStateSubstitutePath oldstate newpath
-      where n = pathLength oldpath
+      where n = pathNodeCount oldpath
             oldpath = mltStatePath oldstate
 
     acceptanceProbabilityOf (BidirPathSub mu) scene =
       defautAcceptanceProbability (measurementContribution scene) (bidirPathSubTransProb scene mu) where
   
-  bidirPathSubTransProb scene mu oldstate newstate = rsprob * (sum $ zipWith (*) ijprobs subpathprobs) where
+  bidirPathSubTransProb scene mu oldstate newstate
+    | newpath==oldpath = kazeroprob * (sum kdzeroprobs)
+    | otherwise        = rsprob * (sum $ zipWith (*) ijprobs subpathprobs)
+    where
     rsprob = sampleProbabilityOf deldist (r,s)
-    subpathprobs = [(sampleProbabilityOf (LightSubPathSampler  (scene, lightstartpath,i))  lightsubpath)
-                   *(sampleProbabilityOf (SensorSubPathSampler (scene, lightstartpath,j)) sensorsubpath)
+    subpathprobs = [(sampleProbabilityOf (LightSubPathSampler  (scene,  lightstartpath,i))  lightsubpath)
+                   *(sampleProbabilityOf (SensorSubPathSampler (scene, sensorstartpath,j)) sensorsubpath)
                    | (i,j)<-ijs
                    | (lightsubpath,sensorsubpath)<-subpathpairs]
     ijprobs = [sampleProbabilityOf adddist ij | ij <- ijs]
+    kdzeroprobs = [sampleProbabilityOf deldist (r',n-r') | r'<-[0..n]]
+    kazeroprob  = sampleProbabilityOf adddistzero (0::Int,0::Int)
     subpathpairs::[(Maybe Path, Maybe Path)]
-    subpathpairs = [(Just $ take (i+neweminodecount) overlappingmiddlesubpath,
-           Just . reverse $ drop (i+neweminodecount) overlappingmiddlesubpath) | (i,_) <- ijs]
+    subpathpairs = [(Just $ take (r+neweminodecount+i) newpath,
+           Just . reverse $ drop (r+neweminodecount+i) newpath) | (i,_) <- ijs]
     ijs = [(i,ka' - i) | i<-[0..ka']]
     deldist = DelBoundsDist (n,meandeletednodes)
     adddist = AddBoundsDist (fromIntegral kd)
-    kd = n - r - s
+    adddistzero = AddBoundsDist (fromIntegral 0)
     ka' = ka - neweminodecount - newsennodecount
     ka = n' - n + kd
+    kd = n - r - s
     neweminodecount = if r==0 then 1 else 0
     newsennodecount = if s==0 then 1 else 0
-    middlesubpath = init . tail $ overlappingmiddlesubpath
     overlappingmiddlesubpath = drop (r-1) . reverse . drop (s-1) $ reverse newpath
     r = length lightstartpath
     s = length sensorstartpath

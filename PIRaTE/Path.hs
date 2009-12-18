@@ -5,6 +5,7 @@
 module PIRaTE.Path where
   import Data.Vector (Vector3(..))
   import Data.Maybe (isNothing,fromJust)
+  import Data.List (isPrefixOf)
   import Control.Monad (replicateM,sequence)
   import PIRaTE.SpatialTypes
   import PIRaTE.UtilityFunctions (normsq,normalize,edgeMap)
@@ -137,14 +138,14 @@ module PIRaTE.Path where
                   let lightsubpath = map getPoint . fromJust $ mrecpoints
                   return . Just $ lightsubpath
       | tail startpath == [] = do
-          let emissionpoint = head startpath
+          let (emissionpoint:_) = startpath
               temissionpoint = EPoint . EmissionPoint $ emissionpoint
               recsampler = RecursivePathSampler (scene,temissionpoint,undefined,sampleplan)
           mrecpoints <- randomSampleFrom recsampler g
           if (isNothing mrecpoints)
             then return Nothing
             else do
-              let lightsubpath = map getPoint . fromJust $ (mrecpoints::(Maybe TPath))
+              let lightsubpath = startpath ++ (tail . map getPoint . fromJust $ (mrecpoints::(Maybe TPath)))
               return . Just $ lightsubpath
       | otherwise = do
           -- we have at least two nodes (and the last one is a scattering one)
@@ -156,23 +157,25 @@ module PIRaTE.Path where
           if (isNothing (mrecpoints::(Maybe TPath)))
             then return Nothing
             else do
-              let lightsubpath = (init startpath)++(map getPoint . fromJust $ mrecpoints)
+              let lightsubpath = startpath ++ (tail . map getPoint . fromJust $ mrecpoints)
               return . Just $ lightsubpath
       where sampleplan = SamplePlan $ replicate scatternodecount Sca
 
     sampleProbabilityOf (LightSubPathSampler _) Nothing = undefined
+    sampleProbabilityOf (LightSubPathSampler _) (Just []) = undefined
     sampleProbabilityOf (LightSubPathSampler (scene,startpath,scatternodecount)) (Just lightsubpath)
+      | not $ startpath `isPrefixOf` lightsubpath = 0
       | null startpath = let
           emissionpointprob = sampleProbabilityOf (EmissionPointSampler scene) (Just emissionpoint)
           scatterpointsprob = sampleProbabilityOf recsampler (Just tpath)
           recsampler = RecursivePathSampler (scene,temissionpoint,undefined,sampleplan)
           temissionpoint = EPoint . EmissionPoint $ emissionpoint
-          (emissionpoint:scatterpoints) = lightsubpath
+          (emissionpoint:_) = lightsubpath
         in emissionpointprob * scatterpointsprob
       | tail startpath == [] = let
           scatterpointsprob = sampleProbabilityOf recsampler (Just tpath)
-          emissionpoint = head startpath
           temissionpoint = EPoint . EmissionPoint $ emissionpoint
+          (emissionpoint:_) = startpath
           recsampler = RecursivePathSampler (scene,temissionpoint,undefined,sampleplan)
         in scatterpointsprob
       | otherwise = let
@@ -187,6 +190,7 @@ module PIRaTE.Path where
             recpoints = drop (pathNodeCount startpath - 1) lightsubpath
 
 
+  lightSubpathFromPntList [] = []
   lightSubpathFromPntList (p:ps) = (EPoint $ EmissionPoint p) : fplTail ps where
     fplTail [] = []
     fplTail (p:ps) = (EPoint $ ScatteringPoint p) : fplTail ps
@@ -209,14 +213,14 @@ module PIRaTE.Path where
                   let sensorsubpath = map getPoint . fromJust $ mrecpoints
                   return . Just $ sensorsubpath
       | tail startpath == [] = do
-          let sensationpoint = head startpath
+          let (sensationpoint:_) = startpath
               tsensationpoint = EPoint . SensationPoint $ sensationpoint
               recsampler = RecursivePathSampler (scene,tsensationpoint,undefined,sampleplan)
           mrecpoints <- randomSampleFrom recsampler g
           if (isNothing mrecpoints)
             then return Nothing
             else do
-              let sensorsubpath = map getPoint . fromJust $ (mrecpoints::(Maybe TPath))
+              let sensorsubpath = startpath ++ (tail . map getPoint . fromJust $ (mrecpoints::(Maybe TPath)))
               return . Just $ sensorsubpath
       | otherwise = do
           -- we have at least two nodes (and the last one is a scattering one)
@@ -228,23 +232,25 @@ module PIRaTE.Path where
           if (isNothing (mrecpoints::(Maybe TPath)))
             then return Nothing
             else do
-              let sensorsubpath = (init startpath)++(map getPoint . fromJust $ mrecpoints)
+              let sensorsubpath = startpath ++ (tail . map getPoint . fromJust $ mrecpoints)
               return . Just $ sensorsubpath
       where sampleplan = SamplePlan $ replicate scatternodecount Sca
 
     sampleProbabilityOf (SensorSubPathSampler _) Nothing = undefined
+    sampleProbabilityOf (SensorSubPathSampler _) (Just []) = undefined
     sampleProbabilityOf (SensorSubPathSampler (scene,startpath,scatternodecount)) (Just sensorsubpath)
+      | not $ startpath `isPrefixOf` sensorsubpath = 0
       | null startpath = let
           sensationpointprob = sampleProbabilityOf (SensationPointSampler scene) (Just sensationpoint)
           scatterpointsprob = sampleProbabilityOf recsampler (Just tpath)
           recsampler = RecursivePathSampler (scene,tsensationpoint,undefined,sampleplan)
           tsensationpoint = EPoint . SensationPoint $ sensationpoint
-          (sensationpoint:scatterpoints) = sensorsubpath
+          (sensationpoint:_) = sensorsubpath
         in sensationpointprob * scatterpointsprob
       | tail startpath == [] = let
           scatterpointsprob = sampleProbabilityOf recsampler (Just tpath)
-          sensationpoint = head startpath
           tsensationpoint = EPoint . SensationPoint $ sensationpoint
+          (sensationpoint:_) = startpath
           recsampler = RecursivePathSampler (scene,tsensationpoint,undefined,sampleplan)
         in scatterpointsprob
       | otherwise = let
@@ -259,6 +265,7 @@ module PIRaTE.Path where
             recpoints = drop (pathNodeCount startpath - 1) sensorsubpath
 
 
+  sensorSubpathFromPntList [] = []
   sensorSubpathFromPntList (p:ps) = (EPoint $ SensationPoint p) : fplTail ps where
     fplTail [] = []
     fplTail (p:ps) = (EPoint $ ScatteringPoint p) : fplTail ps
