@@ -19,8 +19,8 @@ module PIRaTE.RandomSample where
   import PIRaTE.Confineable
   import PIRaTE.Sampleable
   import PIRaTE.PhaseFunction.Isotropic (Isotropic(..),randomIsotropicDirection)
-  import Test.QuickCheck (Arbitrary,arbitrary)
-  
+  import Test.QuickCheck (Arbitrary,Property,arbitrary)
+  import Debug.Trace
   --
   -- random-dependent stuff starts here!
   --
@@ -125,21 +125,25 @@ module PIRaTE.RandomSample where
   -- distribution for length of unchanged light-/sensornodes (r,s) for known nodecount n and mean deleted node count mu
   newtype DelBoundsDist = DelBoundsDist (Int,Double)
   instance Sampleable DelBoundsDist (Int,Int) where
-    randomSampleFrom (DelBoundsDist (n,mu)) g = do
-      let kddist = binomialDistributionFromNMean n mu
+    randomSampleFrom (DelBoundsDist (n,p)) g = do
+      let kddist = BinomialDistribution (n,p)
       kd <- randomSampleFrom kddist g
       let rdist = UniformDistribution (0,n-kd)
       r <- randomSampleFrom rdist g
       let s = n - kd - r
       return (r,s)
     
-    sampleProbabilityOf (DelBoundsDist (n,mu)) (r,s) = kdprob * rprob where
-      kdprob = sampleProbabilityOf kddist kd
-      rprob  = sampleProbabilityOf rdist   r
-      kddist = binomialDistributionFromNMean n mu
-      meandelnodecount = 1.5
-      rdist = UniformDistribution (0,n-kd)
-      kd = n-r-s
+    sampleProbabilityOf (DelBoundsDist (n,p)) (r,s)
+      | any (==0) probs = 0
+      | otherwise = product probs 
+      where
+        --probs  = trace ("|kddist="++show kddist++",kdprob="++show kdprob++",rprob="++show rprob++"|") [kdprob,rprob]
+        probs  = [kdprob,rprob]
+        kdprob = sampleProbabilityOf kddist kd
+        rprob  = sampleProbabilityOf rdist   r
+        kddist = BinomialDistribution (n,p)
+        rdist  = UniformDistribution (0,n-kd)
+        kd = n-r-s
 
   
   -- distribution for number of added light-/sensorsubpath-scatteringnodes for mean added node count mu
@@ -153,13 +157,53 @@ module PIRaTE.RandomSample where
       let j = ka - i
       return (i,j)
     
-    sampleProbabilityOf (AddBoundsDist mu) (i,j) = kaprob * iprob where
-      kaprob = sampleProbabilityOf kadist ka
-      iprob  = sampleProbabilityOf idist   i
-      kadist = geometricDistributionFromMean mu
-      idist = UniformDistribution (0,ka)
-      ka = i + j
+    sampleProbabilityOf (AddBoundsDist mu) (i,j)
+      | any (==0) probs = 0
+      | otherwise = product probs 
+      where
+        probs = [kaprob,iprob]
+        kaprob = sampleProbabilityOf kadist ka
+        iprob  = sampleProbabilityOf idist   i
+        kadist = geometricDistributionFromMean mu
+        idist = UniformDistribution (0,ka)
+        ka = i + j
   
+  newtype RIJSDist = RIJSDist (Int,Double)
+  instance Sampleable RIJSDist (Int,Int,Int,Int) where
+    randomSampleFrom (RIJSDist (n,p)) g = do
+      let deldist = DelBoundsDist (n,p)
+      (r,s) <- randomSampleFrom deldist g
+      let kd = n - r - s
+          meanka = max 1 (fromIntegral kd)
+          adddist = AddBoundsDist meanka
+      (i',j') <- randomSampleFrom adddist g
+      let i | r==0 && i'==0 = 1
+            | otherwise     = i'
+          j | s==0 && j'==0 = 1
+            | otherwise     = j'
+      return (r,i,j,s)
+    
+    sampleProbabilityOf (RIJSDist (n,p)) (r,i,j,s)
+      | any (==0) probs = 0
+      | otherwise = product probs
+      where
+        --probs  = trace ({--"|rsprob="++show rsprob++--}",ijprob="++show ijprob++",is:"++show is++",js:"++show js++"|") [rsprob,ijprob]
+        probs = [rsprob,ijprob]
+        rsprob = sampleProbabilityOf deldist (r,s)
+        ijprob = sum [sampleProbabilityOf adddist (i',j') | i'<-is, j'<-js]
+        is | r==0 && i==1 = [0,1] -- because we originally could've sampled an i' of zero and would still have returned i=1
+           | otherwise    = [i]
+        js | s==0 && j==1 = [0,1] -- because we originally could've sampled an j' of zero and would still have returned j=1
+           | otherwise    = [j]
+        deldist = DelBoundsDist (n,p)
+        adddist = AddBoundsDist meanka
+        meanka = max 1 (fromIntegral kd)
+        kd = n - r - s
+
+  {--prop_RIJSDist_nonzeroProb :: RIJSDist -> Int -> Property
+  prop_RIJSDist_nonzeroProb rijsdist seedint = sampleprob>0
+    where sampleprob = sampleProbabilityOf rijsdist rijs
+          rijs = runRandomSampler rijsdist seedint--}
 
   newtype Exponential3DPointSampler = Exponential3DPointSampler Double
   instance Sampleable Exponential3DPointSampler Point where

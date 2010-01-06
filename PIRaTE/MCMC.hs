@@ -9,6 +9,7 @@ module PIRaTE.MCMC where
   import PIRaTE.Path (randomPathOfLength)
   import PIRaTE.Mutation
 
+  import Debug.Trace
   --
   -- metropolis stuff
   --
