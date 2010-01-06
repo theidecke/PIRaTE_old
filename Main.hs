@@ -23,9 +23,10 @@ module Main where
       Mutation(..),
       ExponentialScatteringNodeTranslation(..),
       ExponentialImageNodeTranslation(..),
-      IncDecPathLength(..),
       NewEmissionPoint(..),
-      RandomPathLength(..)
+      SimpleRandomPathLength(..),
+      RaytracingRandomPathLength(..),
+      BidirPathSub(..)
     )
 
 
@@ -64,7 +65,7 @@ module Main where
       scatteringentity = Entity scatteringcontainer [scatteringmaterial]
       sensorcontainer = Container $ Sphere (Vector3 0 0 (-3)) 1.1
       sensormaterial = toHomogenousSensingMaterial 1.0 (1, PhaseFunction $ fromApexAngle sensorangle, PathLength . mltStatePathLength)
-      sensorangle = 1 * degree
+      sensorangle = 1 * arcmin
       sensorentity = Entity sensorcontainer [sensormaterial]
       entities = [lightsourceentity, scatteringentity,sensorentity]
     in Scene entities
@@ -122,7 +123,8 @@ module Main where
   
   putPhotonList = putStrLn.showSamplesForMathematica
   
-  putPathLengthList = putStrLn.show.reduceList where
+  putPathLengthList :: [Int] -> IO ()
+  putPathLengthList = putStrLn.("pathlengths="++).showListForMathematica show where
     reduceList :: [Int] -> [Int]
     reduceList (x:y:xs)
       | x==y      = reduceList (x:xs)
@@ -132,17 +134,22 @@ module Main where
     
   main = do
     [gridsize,n] <- map read `fmap` getArgs
-    let mutations = [(Mutation $ ExponentialImageNodeTranslation 0.1       , 10)
-                    ,(Mutation $ ExponentialScatteringNodeTranslation 0.1  , 10)
-                    ,(Mutation $ NewEmissionPoint                          , 1)
-                    ,(Mutation $ RandomPathLength 3.0                      , 3)
-                    ]
+    let mutations1 = [(Mutation $ RaytracingRandomPathLength 2.5, 1)]
+        mutations2 = [(Mutation $ ExponentialImageNodeTranslation 0.1       , 10)
+                     ,(Mutation $ ExponentialScatteringNodeTranslation 0.1  , 10)
+                     ,(Mutation $ RaytracingRandomPathLength 20.0           , 3)
+                     ,(Mutation $ NewEmissionPoint                          , 1)
+                     ]
+        mutations3 = [(Mutation $ ExponentialImageNodeTranslation 0.1       , 10)
+                     ,(Mutation $ RaytracingRandomPathLength 2.0            , 10)
+                     ,(Mutation $ BidirPathSub 0.1                          , 10)
+                     ]
         extractor = (\v -> (v3x v, v3y v)) . last . mltStatePath
         --extractor = mltStatePathLength
         chunksize = min 2500 n
         sigma = 1.0
-        scene = testScene --standardScene sigma
-        samples = mltAction scene mutations extractor 9811372 n chunksize
+        scene = standardScene sigma --testScene
+        samples = mltAction scene mutations3 extractor 13442 n chunksize
     --putRadiallyBinnedPhotonCounts gridsize samples
     putGridBinnedPhotonCounts gridsize samples
     --putPhotonList samples

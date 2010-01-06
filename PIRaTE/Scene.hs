@@ -10,7 +10,7 @@ module PIRaTE.Scene where
   import Data.Array.Vector (singletonU)
   import qualified Data.List as L
   import qualified Data.Set as S
-  import Control.Monad (foldM,liftM)
+  import Control.Monad (foldM,liftM,liftM2)
   import Control.Monad.ST (ST,runST)
   import PIRaTE.SpatialTypes
   import PIRaTE.Confineable
@@ -264,166 +264,9 @@ module PIRaTE.Scene where
   {-# INLINE opticalDepthBetween #-}
 
 
-  newtype SensationPoint  = SensationPoint  Point
-  newtype EmissionPoint   = EmissionPoint   Point
-  newtype ScatteringPoint = ScatteringPoint Point
-  instance Show SensationPoint  where show  (SensationPoint p) = "Sen@" ++ showVector3 p
-  instance Show EmissionPoint   where show   (EmissionPoint p) = "Emi@" ++ showVector3 p
-  instance Show ScatteringPoint where show (ScatteringPoint p) = "Sca@" ++ showVector3 p
-
-  class IsEPoint a where
-    getPoint :: a -> Point
-    getDirectionSampler :: Scene -> Direction -> a -> DirectionSampler
-    getDistanceSamplerConstructor :: a -> ((Scene,Point,Direction) -> DistanceSampler)
-
-  instance IsEPoint SensationPoint  where
-    getPoint (SensationPoint  p) = p
-    getDirectionSampler scene   _ (SensationPoint  origin) = DirectionSampler $ SensationDirectionSampler  (scene, origin)
-    getDistanceSamplerConstructor (SensationPoint  target) = DistanceSampler  . SensationDistanceSampler
-  instance IsEPoint EmissionPoint   where
-    getPoint (EmissionPoint   p) = p
-    getDirectionSampler scene   _ (EmissionPoint   origin) = DirectionSampler $ EmissionDirectionSampler   (scene, origin)
-    getDistanceSamplerConstructor (EmissionPoint   target) = DistanceSampler  . EmissionDistanceSampler
-  instance IsEPoint ScatteringPoint where
-    getPoint (ScatteringPoint p) = p
-    getDirectionSampler scene win (ScatteringPoint origin) = DirectionSampler $ ScatteringDirectionSampler (scene, origin, win)
-    getDistanceSamplerConstructor (ScatteringPoint target) = DistanceSampler  . ScatteringDistanceSampler
-  instance IsEPoint EPoint where
-    getPoint (EPoint ep) = getPoint ep
-    getDirectionSampler scene win (EPoint ep) = getDirectionSampler scene win ep
-    getDistanceSamplerConstructor (EPoint ep) = getDistanceSamplerConstructor ep
-  
-  instance Show EPoint where
-    show (EPoint ep) = show ep
-
-  data EPoint = forall p . (IsEPoint p, Show p) => EPoint p --EntityPoint
-  instance Arbitrary EPoint where
-    arbitrary = oneof [fmap (EPoint .  SensationPoint) arbitrary,
-                       fmap (EPoint .   EmissionPoint) arbitrary,
-                       fmap (EPoint . ScatteringPoint) arbitrary]
-
-  data EPointDummy = Sen | Emi | Sca deriving Show
-  instance Arbitrary EPointDummy where
-    arbitrary = oneof [return Sen, return Emi, return Sca]
-  newtype SamplePlan = SamplePlan [EPointDummy] deriving Show
-  instance Arbitrary SamplePlan where
-    arbitrary = frequency
-      [(1, return $ SamplePlan []),
-       (5, fmap (SamplePlan.(:[])) arbitrary)
-      ]
-
-  type TPath = [EPoint] --TypedPath
-  type ERay = (EPoint, Direction)
-
   samplingNothingError name = error $ "don't know " ++ name ++ " probability of sampling Nothing."
   
-  -- Point Samplers
-  newtype RecursivePathSampler = RecursivePathSampler (Scene,EPoint,Direction,SamplePlan)
-  instance Show RecursivePathSampler where
-    show (RecursivePathSampler (scene,eorigin,Direction win,SamplePlan dummylist)) =
-      "RecursivePathSampler @" ++ show eorigin ++
-      "->@" ++ showVector3 win ++
-      "to sample:" ++ show dummylist ++
-      "in Scene: " ++ show scene
-  instance Sampleable RecursivePathSampler (Maybe TPath) where
-    randomSampleFrom (RecursivePathSampler (scene,startpoint,_,SamplePlan [])) g = return $ Just [startpoint]
-    randomSampleFrom (RecursivePathSampler (scene,startpoint,startwin,SamplePlan sampleplan)) gen =
-      liftM (liftM (map fst) . sequence) $ foldM (step gen) [Just (startpoint,startwin)] sampleplan
-      where step :: Gen s -> [Maybe ERay] -> EPointDummy -> ST s [Maybe ERay]
-            step g eraysdone dummy = do
-              let lastmaybeeray = last eraysdone
-                  appenderay newmaybeeray = eraysdone ++ [newmaybeeray]
-              if (isNothing lastmaybeeray)
-                then return $ appenderay Nothing
-                else do let (prevepoint,win) = fromJust lastmaybeeray
-                        maybenewpoint <- raycastbyplan scene win g prevepoint dummy
-                        if (isNothing maybenewpoint)
-                          then return $ appenderay Nothing
-                          else do let newepoint = fromJust maybenewpoint
-                                      oldpoint = getPoint prevepoint
-                                      newpoint = getPoint newepoint
-                                      wout = fromEdge (newpoint - oldpoint)
-                                  return . appenderay $ Just (newepoint,wout)
-
-    sampleProbabilityOf (RecursivePathSampler (scene,startpoint,startwin,SamplePlan sampleplan)) (Just tpath)
-      | any (==0) edgeprobs = 0
-      | otherwise           = product edgeprobs
-      where edgeprobs = edgeMap getedgeprob erays
-            erays = (startpoint,startwin):eraystail
-            eraystail = zip (tail tpath) dirtail
-            dirtail = edgeMap (\u v -> fromEdge (v-u)) $ map getPoint tpath
-            getedgeprob (eorigin,d1) (etarget,d2) = sampleProbabilityOf raycastsampler (Just $ getPoint etarget)
-              where raycastsampler = RaycastPointSampler (dirsampler,dir2distsampler)
-                    dirsampler = getDirectionSampler scene d1 eorigin
-                    dir2distsampler dir = (getDistanceSamplerConstructor etarget) (scene,getPoint eorigin,dir)
-
-    sampleProbabilityOf (RecursivePathSampler (scene,startpoint,startwin,sampleplan)) Nothing =
-      samplingNothingError "RecursivePathSampler"
-
-  prop_RecursivePathSampler_nonzeroProb :: Scene -> EPoint -> Direction -> SamplePlan -> Int -> Property
-  prop_RecursivePathSampler_nonzeroProb scene startpoint startwin (SamplePlan sampleplan) seedint =
-    isJust mtpath ==> sampleprob > 0
-    where sampleprob = sampleProbabilityOf pointsampler mtpath
-          mtpath = (runRandomSampler pointsampler (seedint+2))::(Maybe TPath)
-          pointsampler = RecursivePathSampler (scene,startpoint,startwin,SamplePlan sampleplan)
-
-  raycastbyplan :: Scene -> Direction -> Gen s -> EPoint -> EPointDummy -> ST s (Maybe EPoint)
-  raycastbyplan scene win g (EPoint ep) dummy =
-    liftPoint $ randomSampleFrom (RaycastPointSampler (dirsampler,dir2distsampler)) g
-    where dirsampler = getDirectionSampler scene win ep
-          dir2distsampler = \dir -> distanceSamplerFactory dummy (scene,getPoint ep,dir)
-          liftPoint = liftM (liftM epointfactory)
-          epointfactory = case dummy of
-            Sen -> EPoint . SensationPoint
-            Emi -> EPoint . EmissionPoint
-            Sca -> EPoint . ScatteringPoint
-
-  distanceSamplerFactory dummy = case dummy of
-    Sen -> DistanceSampler . SensationDistanceSampler
-    Emi -> DistanceSampler . EmissionDistanceSampler
-    Sca -> DistanceSampler . ScatteringDistanceSampler
-
-  prop_RaycastPointSampler_nonzeroProb :: Scene -> EPoint -> EPointDummy -> Int -> Property
-  prop_RaycastPointSampler_nonzeroProb scene epoint dummy seedint =
-    isJust mpoint ==> sampleprob > 0
-    where sampleprob = sampleProbabilityOf pointsampler mpoint
-          mpoint = (runRandomSampler pointsampler (seedint+2))::(Maybe Point)
-          pointsampler = RaycastPointSampler (dirsampler,dir2distsampler)
-          dirsampler = getDirectionSampler scene win epoint
-          dir2distsampler = \dir -> distanceSamplerFactory dummy (scene,getPoint epoint,dir)
-          win   = (runRandomSampler  winsampler (seedint+1))::Direction
-          origin  = (runRandomSampler originsampler seedint)::Point
-          winsampler = (Isotropic,undefined::Ray)
-          originsampler = Exponential3DPointSampler 1.0
-
-  newtype RaycastPointSampler = RaycastPointSampler (DirectionSampler,Direction->DistanceSampler)
-  instance Show RaycastPointSampler where
-    show (RaycastPointSampler (_,_)) = "RaycastPointSampler"
-  instance Sampleable RaycastPointSampler (Maybe Point) where
-    randomSampleFrom (RaycastPointSampler (dirsampler,dir2distsampler)) g = do
-      maybedir <- randomSampleFrom dirsampler g
-      if (isNothing maybedir)
-        then return Nothing
-        else do let dir = fromJust maybedir
-                maybedist <- randomSampleFrom (dir2distsampler dir) g
-                if (isNothing maybedist)
-                  then return Nothing
-                  else do let origin = dirSamplerOrigin dirsampler
-                              dist = fromJust maybedist
-                          return $ Just ((Ray origin dir) `followFor` dist)
-
-    sampleProbabilityOf (RaycastPointSampler (dirsampler,dir2distsampler)) (Just p) =
-      dirprob * distprob / (dist^2)
-      where dirprob  = sampleProbabilityOf  dirsampler (Just  dir)
-            distprob = sampleProbabilityOf distsampler (Just dist)
-            distsampler = dir2distsampler dir
-            dir = Direction $ (1/dist) *<> edge --fromEdge edge
-            dist = vmag edge
-            edge = p - origin
-            origin = dirSamplerOrigin dirsampler
-    sampleProbabilityOf (RaycastPointSampler (dirsampler,dir2distsampler)) Nothing =
-      samplingNothingError "RaycastPointSampler"
-
+  --data PointSampler = forall s . (Sampleable s (Maybe Point)) => PointSampler s
   newtype SensationPointSampler = SensationPointSampler Scene
   instance Show SensationPointSampler where
     show (SensationPointSampler scene) = "SensationPointSampler in Scene: " ++ show scene

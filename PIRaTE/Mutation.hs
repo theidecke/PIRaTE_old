@@ -1,26 +1,40 @@
 {-# LANGUAGE ExistentialQuantification #-}
+{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE ParallelListComp #-}
 
 module PIRaTE.Mutation where
   import Data.Vector (Vector3(..),(*<>),vmag)
-  import Data.Maybe (fromMaybe,isNothing,fromJust)
+  import Data.Maybe (fromMaybe,isNothing,fromJust,listToMaybe)
   import qualified Data.List as L (findIndex)
   import Statistics.RandomVariate (Gen,uniform)
   import Control.Monad (liftM)
   import Control.Monad.ST (ST)
-  import PIRaTE.SpatialTypes (MLTState,mltStatePath,mltStatePathLength,mltStateSubstitutePath,pathNodeCount,pathLength)
-  import PIRaTE.UtilityFunctions (mapAt)
+  import PIRaTE.SpatialTypes
+  import PIRaTE.UtilityFunctions (mapAt,edgeMap)
   import PIRaTE.Sampleable
   import PIRaTE.RandomSample
   import PIRaTE.Scene
-  import PIRaTE.Path (measurementContribution,trisect,RaytracingPathSampler(..))
+  import PIRaTE.Path
+  
+  import Debug.Trace
   
   -- the standard (possibly wasteful) way to compute the acceptance probability
   -- f x should return the probability density for state x
   -- t x y should return the transition probability from state x to state y
   defautAcceptanceProbability :: (a -> Double) -> (a -> a -> Double) -> a -> a -> Double
+  defautAcceptanceProbability f t oldstate newstate
+    | a==0 || c==0 = 0
+    | otherwise = (a*c)/(b*d)
+    where a = f newstate
+          b = f oldstate
+          c = t newstate oldstate
+          d = t oldstate newstate
+  
+  {--defautAcceptanceProbability :: (a -> Double) -> (a -> a -> Double) -> a -> a -> Double
   defautAcceptanceProbability f t oldstate newstate =
     (/) ((f newstate) * (t newstate oldstate))
-        ((f oldstate) * (t oldstate newstate))
+        ((f oldstate) * (t oldstate newstate))--}
         
   translationInvariant _ _ = 1
         
@@ -134,12 +148,36 @@ module PIRaTE.Mutation where
                 oldpath = mltStatePath oldstate
                 newpath = mltStatePath newstate
 
+  data SimpleRandomPathLength = SimpleRandomPathLength Double
+  instance Show SimpleRandomPathLength where
+    show (SimpleRandomPathLength l) = "SimpleRandomPathLength(" ++ (show l) ++ ")"
+  instance Mutating SimpleRandomPathLength where
+    mutateWith (SimpleRandomPathLength l) scene oldstate g = do
+        geomdistsample <- randomSampleFrom geomdist g
+        let newpathlength = 1 + geomdistsample
+            simplepathsampler = SimplePathSampler (scene,newpathlength)
+        mnewpath <- randomSampleFrom simplepathsampler g
+        if (isNothing mnewpath)
+          then return Nothing
+          else return . Just $ mltStateSubstitutePath oldstate (fromJust mnewpath)
+      where geomdist = geometricDistributionFromMean (l-1)
 
-  data RandomPathLength = RandomPathLength Double
-  instance Show RandomPathLength where
-    show (RandomPathLength l) = "RandomPathLength(" ++ (show l) ++ ")"
-  instance Mutating RandomPathLength where
-    mutateWith (RandomPathLength l) scene oldstate g = do
+    acceptanceProbabilityOf (SimpleRandomPathLength l) scene oldstate newstate =
+      defautAcceptanceProbability (measurementContribution scene) t oldstate newstate where
+        t _ newstate = pathlengthprob * simplepathprob where
+          simplepathprob = sampleProbabilityOf simplepathsampler (Just newpath)
+          simplepathsampler = SimplePathSampler (scene,newpathlength)
+          pathlengthprob = sampleProbabilityOf geomdist geomdistsample
+          geomdistsample = newpathlength - 1
+          geomdist = geometricDistributionFromMean (l-1)
+          newpathlength = pathLength newpath
+          newpath = mltStatePath newstate
+
+  data RaytracingRandomPathLength = RaytracingRandomPathLength Double
+  instance Show RaytracingRandomPathLength where
+    show (RaytracingRandomPathLength l) = "RaytracingRandomPathLength(" ++ (show l) ++ ")"
+  instance Mutating RaytracingRandomPathLength where
+    mutateWith (RaytracingRandomPathLength l) scene oldstate g = do
         geomdistsample <- randomSampleFrom geomdist g
         let newpathlength = 1 + geomdistsample
             simplepathsampler = RaytracingPathSampler (scene,newpathlength)
@@ -149,7 +187,7 @@ module PIRaTE.Mutation where
           else return . Just $ mltStateSubstitutePath oldstate (fromJust mnewpath)
       where geomdist = geometricDistributionFromMean (l-1)
 
-    acceptanceProbabilityOf (RandomPathLength l) scene oldstate newstate =
+    acceptanceProbabilityOf (RaytracingRandomPathLength l) scene oldstate newstate =
       defautAcceptanceProbability (measurementContribution scene) t oldstate newstate where
         t _ newstate = pathlengthprob * simplepathprob where
           simplepathprob = sampleProbabilityOf simplepathsampler (Just newpath)
@@ -160,80 +198,85 @@ module PIRaTE.Mutation where
           newpathlength = pathLength newpath
           newpath = mltStatePath newstate        
           
-        
-      
 
-  data IncDecPathLength = IncDecPathLength Double
-  instance Show IncDecPathLength where
-    show (IncDecPathLength lambda) = "IncDecPathLength(" ++ (show lambda) ++ ")"
-  instance Mutating IncDecPathLength where
-    mutateWith (IncDecPathLength l) scene oldstate g = do
-      u <- uniform g
-      let coinflip = (u::Double)<=0.5
-          oldpath = mltStatePath oldstate
-          (eminode,scatternodes,sensnode) = trisect oldpath
-          scatternodecount = length scatternodes
-      if coinflip
-        then if scatternodecount==0 -- add scatter node
-          then do -- sample new scatterpoint independently
-            maybenewnode <- randomSampleFrom (ScatteringPointSampler scene) g
-            if (isNothing maybenewnode)
+  data BidirPathSub = BidirPathSub Double
+  instance Show BidirPathSub where
+    show (BidirPathSub mu) = "BidirPathSub:("++show mu++")"
+  instance Mutating BidirPathSub where
+    mutateWith (BidirPathSub mu) scene oldstate g = do
+        let rijsdist = RIJSDist (n,mu)
+        (r,i,j,s) <- randomSampleFrom rijsdist g
+        let lightstartpath  = take r oldpath
+            sensorstartpath = take s (reverse oldpath)
+            n' = r + i + j + s
+            newpathplan = planFromNodeCount n'
+            lightstartepoint  = fmap (flip typifyPoint (last  lightstartpath)) $ listToMaybe (reverse $ take r newpathplan)
+            sensorstartepoint = fmap (flip typifyPoint (last sensorstartpath)) $ listToMaybe (reverse $ take s (reverse newpathplan))
+            lightstartwin  |     r < 2 = undefined
+                           | otherwise = last . edgeMap (\u v -> fromEdge (v-u)) $ lightstartpath
+            sensorstartwin |     s < 2 = undefined
+                           | otherwise = last . edgeMap (\u v -> fromEdge (v-u)) $ sensorstartpath
+            lightstarteray  = fmap (\ep -> (ep, lightstartwin)) lightstartepoint
+            sensorstarteray = fmap (\ep -> (ep,sensorstartwin)) sensorstartepoint
+            lightsubpathplan  = take i . drop r $ newpathplan
+            sensorsubpathplan = take j . drop s $ reverse newpathplan
+            lightsubpathsampler  = RecursivePathSampler2 (scene, lightstarteray,SamplePlan  lightsubpathplan)
+            sensorsubpathsampler = RecursivePathSampler2 (scene,sensorstarteray,SamplePlan sensorsubpathplan)
+        mlightsubpath <- randomSampleFrom lightsubpathsampler g
+        if (isNothing mlightsubpath)
+          then return Nothing
+          else do
+            msensorsubpath <- randomSampleFrom sensorsubpathsampler g
+            if (isNothing msensorsubpath)
               then return Nothing
               else do
-                let newnode = fromJust maybenewnode
-                    newpath = [eminode,newnode,sensnode]
+                let lightsubpath  = fromJust (mlightsubpath::(Maybe Path))
+                    sensorsubpath = fromJust (msensorsubpath::(Maybe Path))
+                    newpath = lightstartpath ++ lightsubpath ++ (reverse sensorsubpath) ++ (reverse sensorstartpath)
                 return . Just $ mltStateSubstitutePath oldstate newpath
-          else do -- sample new scatterpoint by jittered bisection
-            rndtranslation <- randomSampleFrom (Exponential3DPointSampler l) g
-            addindex <- randomIntInRange (0,scatternodecount) g
-            let (prelist,postlist) = splitAt addindex scatternodes
-                anchor
-                  | addindex==0                = head postlist
-                  | addindex==scatternodecount = last  prelist
-                  | otherwise              = let prenode = last prelist
-                                                 postnode = head postlist
-                                             in 0.5*<>(prenode + postnode)
-                newnode = anchor + rndtranslation
-                newpath = [eminode] ++ prelist ++ [newnode] ++ postlist ++ [sensnode]
-            return . Just $ mltStateSubstitutePath oldstate newpath
-        else if scatternodecount > 0
-          then do -- delete scatter node
-            delindex <- randomListIndex scatternodes g
-            let (prelist,postlist) = splitAt delindex scatternodes
-                newpath = [eminode] ++ prelist ++ (tail postlist) ++ [sensnode]
-            return . Just $ mltStateSubstitutePath oldstate newpath
-          else
-            return Nothing
+      where n = pathNodeCount oldpath
+            oldpath = mltStatePath oldstate
 
-    acceptanceProbabilityOf (IncDecPathLength l) scene oldstate newstate =
-      defautAcceptanceProbability (measurementContribution scene)
-                                  (incDecPathLengthTransitionProbability scene l)
-                                  oldstate
-                                  newstate
-      where
-        incDecPathLengthTransitionProbability :: Scene -> Double -> MLTState -> MLTState -> Double
-        incDecPathLengthTransitionProbability scene lambda oldstate newstate =
-          let oldpath = mltStatePath oldstate
-              newpath = mltStatePath newstate
-              (_,oldscatternodes,_) = trisect oldpath
-              (_,newscatternodes,_) = trisect newpath
-              oldscatternodecount = length oldscatternodes
-              newscatternodecount = length newscatternodes
-          in 0.5 * if newscatternodecount > oldscatternodecount
-            then let
-                newnodeindex = fromMaybe oldscatternodecount .
-                               L.findIndex (uncurry (/=)) $ zip oldscatternodes newscatternodes
-                newnode = newscatternodes!!newnodeindex                
-              in if oldscatternodecount==0-- added node
-                then -- new scatterpoint sampled independently
-                  sampleProbabilityOf (ScatteringPointSampler scene) (Just newnode)
-                else let -- new scatterpoint sampled by jittered bisection
-                    anchor
-                      | newnodeindex==0                   = head oldpath
-                      | newnodeindex==oldscatternodecount = last oldpath
-                      | otherwise                   = 0.5*<>(sum . take 2 $ drop (newnodeindex-1) oldscatternodes)
-                    exp3dprob = sampleProbabilityOf (Exponential3DPointSampler lambda) (newnode - anchor)
-                  in exp3dprob / (fromIntegral newscatternodecount)
-            else -- deleted node
-              1 / max 1 (fromIntegral oldscatternodecount)
-        
+    acceptanceProbabilityOf (BidirPathSub mu) scene oldstate newstate =
+      defautAcceptanceProbability (measurementContribution scene) (bidirPathSubTransProb scene mu) oldstate newstate
+  
+  bidirPathSubTransProb scene mu oldstate newstate
+    | unchangedpath = sum $ map getRIJSProb rijss
+    | otherwise     = sum [(getRIJSProb rijs)*(getSamplingProb rijs) | rijs<-rijss]
+    where
+    getSamplingProb (r,i,j,s) = lightsubpathprob * sensorsubpathprob where
+      lightsubpathprob  = sampleProbabilityOf  lightsubpathsampler (Just  lightsubpath)
+      sensorsubpathprob = sampleProbabilityOf sensorsubpathsampler (Just sensorsubpath)
+      lightsubpathsampler  = RecursivePathSampler2 (scene, lightstarteray,SamplePlan  lightsubpathplan)
+      sensorsubpathsampler = RecursivePathSampler2 (scene,sensorstarteray,SamplePlan sensorsubpathplan)
+      lightsubpath  = take i . drop r $ newpath
+      sensorsubpath = take j . drop s $ reverse newpath
+      lightsubpathplan  = take i . drop r $ newpathplan
+      sensorsubpathplan = take j . drop s $ reverse newpathplan
+      lightstarteray  = fmap (\ep -> (ep, lightstartwin)) lightstartepoint
+      sensorstarteray = fmap (\ep -> (ep,sensorstartwin)) sensorstartepoint
+      lightstartepoint  = fmap (flip typifyPoint (last lstartpath)) $ listToMaybe (reverse $ take r newpathplan)
+      sensorstartepoint = fmap (flip typifyPoint (last sstartpath)) $ listToMaybe (reverse $ take s (reverse newpathplan))
+      lightstartwin  |     r < 2 = undefined
+                     | otherwise = last . edgeMap (\u v -> fromEdge (v-u)) $ lstartpath
+      sensorstartwin |     s < 2 = undefined
+                     | otherwise = last . edgeMap (\u v -> fromEdge (v-u)) $ sstartpath
+      lstartpath = take r newpath
+      sstartpath = take s $ reverse newpath
+    newpathplan = planFromNodeCount n'
+    getRIJSProb = sampleProbabilityOf (RIJSDist (n,meandeletednodes))
+    meandeletednodes = mu
+    rijss | unchangedpath = [(r,0,0,s) | r<-[0..n]     , s<-[n-r]]
+          | otherwise     = [(r,i,j,s) | r<-[r']       , s<-[s']
+                                       , i<-[0..n'-r-s], j<-[n'-r-s-i]
+                                       , r>0 || i>0    , s>0 || j>0 ]
+    unchangedpath = oldpath==newpath --r' == n && s' == n
+    r' = length lightstartpath
+    s' = length sensorstartpath
+    lightstartpath  = map fst . takeWhile (uncurry (==)) $ zip oldpath newpath
+    sensorstartpath = map fst . takeWhile (uncurry (==)) $ zip (reverse oldpath) (reverse newpath)
+    n  = pathNodeCount oldpath
+    n' = pathNodeCount newpath
+    oldpath = mltStatePath oldstate
+    newpath = mltStatePath newstate
+  --(\n n'->[(r,i,j,s)|r<-[0..n],s<-[0..n-r],i<-[0..n'-r-s],j<-[n'-r-s-i],r>0 || i>0,s>0 || j>0]) 3 3
