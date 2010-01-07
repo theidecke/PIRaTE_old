@@ -4,6 +4,8 @@ module Main where
   import qualified Data.List as L (intersperse,foldl')
   import System.Environment
   import Text.Printf
+  import Control.Parallel
+  import Control.Parallel.Strategies
   import PIRaTE.SpatialTypes
   import PIRaTE.UtilityFunctions (normalize)
   import PIRaTE.Confineable
@@ -140,16 +142,19 @@ module Main where
                      ,(Mutation $ RaytracingRandomPathLength 20.0           , 3)
                      ,(Mutation $ NewEmissionPoint                          , 1)
                      ]
-        mutations3 = [(Mutation $ ExponentialImageNodeTranslation 0.1       , 10)
-                     ,(Mutation $ RaytracingRandomPathLength 2.0            , 10)
-                     ,(Mutation $ BidirPathSub 0.1                          , 10)
+        mutations3 = [(Mutation $ ExponentialImageNodeTranslation 0.1       ,  3)
+                     ,(Mutation $ RaytracingRandomPathLength (4.0*sigma)    ,  7)
+                     ,(Mutation $ BidirPathSub 0.06                         , 10)
                      ]
         extractor = (\v -> (v3x v, v3y v)) . last . mltStatePath
         --extractor = mltStatePathLength
         chunksize = min 2500 n
-        sigma = 1.0
-        scene = standardScene sigma --testScene
-        samples = mltAction scene mutations3 extractor 13442 n chunksize
+        sigma = 5.0
+        scene = standardScene sigma--testScene
+        sessionsize = min 50000 n --n
+        sessioncount = n `div` sessionsize
+        startSampleSession size seed = mltAction scene mutations3 extractor seed size (min 2500 size)
+        samples = concatMap (startSampleSession sessionsize) [1..sessioncount]
     --putRadiallyBinnedPhotonCounts gridsize samples
     putGridBinnedPhotonCounts gridsize samples
     --putPhotonList samples
