@@ -127,9 +127,11 @@ module PIRaTE.RandomSample where
     randomSampleFrom (DelBoundsDist (n,p)) g = do
       let kddist = BinomialDistribution (n,p)
       kd <- randomSampleFrom kddist g
-      let rdist = UniformDistribution (0,n-kd)
+      let ks = n - kd
+          rmax = min ks (n-1) --r (or s) mustn't be equal to n, because we shouldn't sample the lightsubpath starting at the sensationpoint
+          rdist = UniformDistribution (0,rmax)
       r <- randomSampleFrom rdist g
-      let s = n - kd - r
+      let s = ks - r
       return (r,s)
     
     sampleProbabilityOf (DelBoundsDist (n,p)) (r,s)
@@ -141,8 +143,10 @@ module PIRaTE.RandomSample where
         kdprob = sampleProbabilityOf kddist kd
         rprob  = sampleProbabilityOf rdist   r
         kddist = BinomialDistribution (n,p)
-        rdist  = UniformDistribution (0,n-kd)
-        kd = n-r-s
+        rdist  = UniformDistribution (0,rmax)
+        rmax = min ks (n-1)
+        kd = n - ks
+        ks = r + s
 
   
   -- distribution for number of added light-/sensorsubpath-scatteringnodes for mean added node count mu
