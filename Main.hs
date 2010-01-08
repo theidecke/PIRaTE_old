@@ -11,6 +11,7 @@ module Main where
   import PIRaTE.Confineable
   import PIRaTE.Container (Container(..))
   import PIRaTE.Container.Sphere (Sphere(..))
+  import PIRaTE.Container.Box (fromCorners)
   import PIRaTE.PhaseFunction (PhaseFunction(..))
   import PIRaTE.PhaseFunction.Isotropic (Isotropic(..))
   import PIRaTE.PhaseFunction.ZCone (fromApexAngle)
@@ -46,7 +47,7 @@ module Main where
                      ent2 = Entity cont2 [mat2]
                      ent3 = Entity cont3 [mat3]
                      ent4 = Entity cont4 [mat4]
-                     sensorcontainer = Container $ Sphere (Vector3 0 0 (-3)) 1.1
+                     sensorcontainer = Container $ fromCorners (Vector3 (-1) (-1) (-3.01)) (Vector3 1 1 (-3))
                      sensormaterial = toHomogenousSensingMaterial 1.0 (1, PhaseFunction $ fromApexAngle sensorangle, PathLength . mltStatePathLength)
                      sensorangle = 1 * arcmin
                      sensorentity = Entity sensorcontainer [sensormaterial]
@@ -65,7 +66,7 @@ module Main where
       scatteringcontainer = Container $ Sphere (Vector3 0 0 0) 1
       scatteringmaterial = toHomogenousInteractingMaterial 0 sigma (1,PhaseFunction Isotropic)
       scatteringentity = Entity scatteringcontainer [scatteringmaterial]
-      sensorcontainer = Container $ Sphere (Vector3 0 0 (-3)) 1.1
+      sensorcontainer = Container $ fromCorners (Vector3 (-1) (-1) (-3.01)) (Vector3 1 1 (-3))
       sensormaterial = toHomogenousSensingMaterial 1.0 (1, PhaseFunction $ fromApexAngle sensorangle, PathLength . mltStatePathLength)
       sensorangle = 1 * arcmin
       sensorentity = Entity sensorcontainer [sensormaterial]
