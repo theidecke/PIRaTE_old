@@ -266,10 +266,10 @@ module PIRaTE.Mutation where
     newpathplan = planFromNodeCount n'
     getRIJSProb = sampleProbabilityOf (RIJSDist (n,meandeletednodes))
     meandeletednodes = mu
-    rijss | unchangedpath = [(r,0,0,s) | r<-[0..n]     , s<-[n-r]]
+    rijss | unchangedpath = [(r,0,0,s) | r<-[1..n-1]   , s<-[n-r]]
           | otherwise     = [(r,i,j,s) | r<-[r']       , s<-[s']
                                        , i<-[0..n'-r-s], j<-[n'-r-s-i]
-                                       , r>0 || i>0    , s>0 || j>0 ]
+                                       , i+j >= (length . filter (==0) $ [r,s])]
     unchangedpath = oldpath==newpath --r' == n && s' == n
     r' = length lightstartpath
     s' = length sensorstartpath

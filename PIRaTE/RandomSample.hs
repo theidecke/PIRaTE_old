@@ -128,8 +128,10 @@ module PIRaTE.RandomSample where
       let kddist = BinomialDistribution (n,p)
       kd <- randomSampleFrom kddist g
       let ks = n - kd
+          rmin | kd==0     = 1
+               | otherwise = 0
           rmax = min ks (n-1) --r (or s) mustn't be equal to n, because we shouldn't sample the lightsubpath starting at the sensationpoint
-          rdist = UniformDistribution (0,rmax)
+          rdist = UniformDistribution (rmin,rmax)
       r <- randomSampleFrom rdist g
       let s = ks - r
       return (r,s)
@@ -143,8 +145,10 @@ module PIRaTE.RandomSample where
         kdprob = sampleProbabilityOf kddist kd
         rprob  = sampleProbabilityOf rdist   r
         kddist = BinomialDistribution (n,p)
-        rdist  = UniformDistribution (0,rmax)
+        rdist  = UniformDistribution (rmin,rmax)
         rmax = min ks (n-1)
+        rmin | kd==0     = 1
+             | otherwise = 0
         kd = n - ks
         ks = r + s
 
