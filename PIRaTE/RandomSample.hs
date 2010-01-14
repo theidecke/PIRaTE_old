@@ -184,16 +184,22 @@ module PIRaTE.RandomSample where
           meanka = max 1 (fromIntegral kd)
           adddist = AddBoundsDist meanka
       (i',j') <- randomSampleFrom adddist g
-      let i | r==0 && i'==0 = 1
+      let i | r==0 && i'==0 = 1 -- TODO: if r==0, i can still be zero, as long as i+j=ka>0 !
             | otherwise     = i'
           j | s==0 && j'==0 = 1
             | otherwise     = j'
-      return (r,i,j,s)
+      let healthy_rijs = {--trace (show n++show (r,i,j,s)) $ --}assertRIJS n (r,i,j,s)
+      if not healthy_rijs
+        then fail $ "RIJSDist: Assertion failed: n="++show n++", (r,i,j,s)="++show (r,i,j,s)
+        else return (r,i,j,s)
+      
     
     sampleProbabilityOf (RIJSDist (n,p)) (r,i,j,s)
+      | not healthy_rijs = 0
       | any (==0) probs = 0
       | otherwise = product probs
       where
+        healthy_rijs = assertRIJS n (r,i,j,s)
         probs = [rsprob,ijprob]
         rsprob = sampleProbabilityOf deldist (r,s)
         ijprob = sum [sampleProbabilityOf adddist (i',j') | i'<-is, j'<-js]
@@ -205,6 +211,16 @@ module PIRaTE.RandomSample where
         adddist = AddBoundsDist meanka
         meanka = max 1 (fromIntegral kd)
         kd = n - r - s
+
+  -- tells, if (r,i,j,s) is legal for given n
+  assertRIJS n (r,i,j,s) = and
+    [r >= 0, r < n
+    ,s >= 0, s < n
+    ,i >= 0, j >= 0
+    ,r+s <= n
+    ,i+j >= minka
+    ]
+    where minka = length . filter (==0) $ [r,s]
 
   {--prop_RIJSDist_nonzeroProb :: RIJSDist -> Int -> Property
   prop_RIJSDist_nonzeroProb rijsdist seedint = sampleprob>0
