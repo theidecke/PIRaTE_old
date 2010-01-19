@@ -173,6 +173,7 @@ module PIRaTE.Mutation where
           newpathlength = pathLength newpath
           newpath = mltStatePath newstate
 
+
   data RaytracingRandomPathLength = RaytracingRandomPathLength Double
   instance Show RaytracingRandomPathLength where
     show (RaytracingRandomPathLength l) = "RaytracingRandomPathLength(" ++ (show l) ++ ")"
@@ -196,8 +197,7 @@ module PIRaTE.Mutation where
           geomdistsample = newpathlength - 1
           geomdist = geometricDistributionFromMean (l-1)
           newpathlength = pathLength newpath
-          newpath = mltStatePath newstate        
-          
+          newpath = mltStatePath newstate
 
   data BidirPathSub = BidirPathSub Double
   instance Show BidirPathSub where

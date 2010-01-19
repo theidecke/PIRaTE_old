@@ -62,38 +62,32 @@ module PIRaTE.Path where
   newtype RaytracingPathSampler = RaytracingPathSampler (Scene,Int)
   instance Sampleable RaytracingPathSampler (Maybe Path) where
     randomSampleFrom (RaytracingPathSampler (scene,pl)) g = do
-      msensationpoint <- randomSampleFrom (SensationPointSampler scene) g
-      if (isNothing msensationpoint)
+      let sampleplan = SamplePlan $ Sen:(replicate (pl-1) Sca)
+          recursivesensingsampler = RecursivePathSampler2 (scene,Nothing,sampleplan)
+      mrecursivepoints <- randomSampleFrom recursivesensingsampler g
+      if (isNothing (mrecursivepoints::(Maybe Path)))
         then return Nothing
         else do
-          let sensationpoint = fromJust msensationpoint
-              esenspoint = EPoint . SensationPoint $ sensationpoint
-              sampleplan = SamplePlan $ replicate (pl-1) Sca
-              recursivesensingsampler = RecursivePathSampler (scene,esenspoint,undefined,sampleplan)
-          mrecursiveepoints <- randomSampleFrom recursivesensingsampler g
-          if (isNothing (mrecursiveepoints::(Maybe TPath)))
+          let pathtail = reverse . fromJust $ mrecursivepoints
+          memissionpoint <- randomSampleFrom (EmissionPointSampler scene) g
+          if (isNothing memissionpoint)
             then return Nothing
             else do
-              let scatterpoints = reverse . map getPoint . tail . fromJust $ mrecursiveepoints
-              memissionpoint <- randomSampleFrom (EmissionPointSampler scene) g
-              if (isNothing memissionpoint)
-                then return Nothing
-                else do
-                  let emissionpoint = fromJust memissionpoint
-                      path = emissionpoint:(scatterpoints++[sensationpoint])
-                  return $ Just path
+              let emissionpoint = fromJust memissionpoint
+                  path = emissionpoint:pathtail
+              return $ Just path
 
     sampleProbabilityOf (RaytracingPathSampler (scene,pl)) (Just path)
       | pathLength path /= pl = 0
-      | otherwise = sensationprob * scatterprobs * emissionprob
-      where sensationprob = sampleProbabilityOf (SensationPointSampler scene) (Just sensationpoint)
-            scatterprobs  = sampleProbabilityOf scatterpointsampler (Just recursiveepoints)
-            emissionprob  = sampleProbabilityOf (EmissionPointSampler  scene) (Just emissionpoint)
-            scatterpointsampler = RecursivePathSampler (scene,esenspoint,undefined,sampleplan)
-            recursiveepoints = esenspoint:(map (EPoint . ScatteringPoint) . reverse $ scatterpoints)
-            esenspoint = EPoint . SensationPoint $ sensationpoint
-            sampleplan = SamplePlan $ replicate (pl-1) Sca
-            (emissionpoint,scatterpoints,sensationpoint) = trisect path
+      | any (==0) probs       = 0
+      | otherwise             = product probs
+      where probs = [pathtailprob, emissionprob]
+            pathtailprob  = sampleProbabilityOf revpathtailsampler (Just revpathtail)
+            emissionprob  = sampleProbabilityOf (EmissionPointSampler scene) (Just emissionpoint)
+            revpathtailsampler = RecursivePathSampler2 (scene,Nothing,sampleplan)
+            revpathtail = reverse . tail $ path
+            emissionpoint = head path
+            sampleplan = SamplePlan $ Sen:(replicate (pl-1) Sca)
     sampleProbabilityOf _ Nothing = undefined
 
 
