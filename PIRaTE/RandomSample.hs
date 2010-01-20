@@ -148,8 +148,8 @@ module PIRaTE.RandomSample where
   
   newtype RIJSDist = RIJSDist (Int,Double)
   instance Sampleable RIJSDist (Int,Int,Int,Int) where
-    randomSampleFrom (RIJSDist (n,p)) g = do
-      let kddist = BinomialDistribution (n,p)
+    randomSampleFrom (RIJSDist (n,meankd)) g = do
+      let kddist = binomialDistributionFromNMean n meankd
       kd <- randomSampleFrom kddist g
       let ks = n - kd
           (rmin,rmax) | kd==0     = (1,ks-1)
@@ -175,7 +175,7 @@ module PIRaTE.RandomSample where
         else return (r,i,j,s)
       
     
-    sampleProbabilityOf (RIJSDist (n,p)) (r,i,j,s)
+    sampleProbabilityOf (RIJSDist (n,meankd)) (r,i,j,s)
       | bad_rijs = 0
       | any (==0) probs = 0
       | otherwise = product probs
@@ -186,7 +186,7 @@ module PIRaTE.RandomSample where
         rprob   = sampleProbabilityOf   rdist   r
         ka'prob = sampleProbabilityOf ka'dist ka'
         iprob   = sampleProbabilityOf   idist   i
-        kddist = BinomialDistribution (n,p)
+        kddist = binomialDistributionFromNMean n meankd
         rdist = UniformDistribution (rmin,rmax)
         (rmin,rmax) | kd==0     = (1,ks-1)
                     | otherwise = (0,ks)

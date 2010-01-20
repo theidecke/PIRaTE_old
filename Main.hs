@@ -143,10 +143,10 @@ module Main where
                      ,(Mutation $ RaytracingRandomPathLength (2.0*sigma)    ,  3)
                      ,(Mutation $ NewEmissionPoint                          ,  1)
                      ]
-        mutations3 = [(Mutation $ BidirPathSub 0.5                          ,  1)]
+        mutations3 = [(Mutation $ BidirPathSub 1.0                          ,  1)]
         mutations4 = [(Mutation $ ExponentialImageNodeTranslation 0.1       ,  3)
                      ,(Mutation $ RaytracingRandomPathLength (2.0*sigma)    ,  7)
-                     ,(Mutation $ BidirPathSub 0.06                         , 10)
+                     ,(Mutation $ BidirPathSub 1.0                          , 10)
                      ]
         extractor = (\v -> (v3x v, v3y v)) . last . mltStatePath
         --extractor = mltStatePathLength
