@@ -89,11 +89,14 @@ module PIRaTE.RandomSample where
       return k
     
     sampleProbabilityOf (UniformDistribution (a,b)) k
-      | k>=a && k<=b = 1 / fromIntegral (b-a+1)
-      | otherwise    = 0
+      | k<a || k>b = 0
+      | otherwise  = 1 / fromIntegral (b-a+1)
   
   newtype GeometricDistribution = GeometricDistribution Double deriving Show
-  geometricDistributionFromMean mu = GeometricDistribution (1 / (mu + 1))
+  geometricDistributionFromMean mu
+    | mu >=0    = GeometricDistribution (1 / (mu + 1))
+    | otherwise = error "geometricDistributionFromMean: mu<0"
+
   instance Sampleable GeometricDistribution Int where
     randomSampleFrom (GeometricDistribution p') g = geometricSample' p' 0 g where
       geometricSample' p n g = do
@@ -104,8 +107,28 @@ module PIRaTE.RandomSample where
           else geometricSample' p (n+1) g
 
     sampleProbabilityOf (GeometricDistribution p) n
-      | n>=0      = (1-p)^n * p
+      | p<0 || p>1 || n<0 = 0
+      | otherwise         = (1-p)^n * p
+
+  newtype PoissonDistribution = PoissonDistribution Double deriving Show
+  instance Sampleable PoissonDistribution Int where
+    randomSampleFrom (PoissonDistribution lambda) g = poissonSample 0 1 g where
+      poissonSample :: Int -> Double -> Gen s -> ST s Int
+      poissonSample k p g = do
+        u1 <- uniform g
+        let p' = (u1::Double) * p
+        if (p'<=l)
+          then return k
+          else poissonSample (k+1) p' g
+      l = exp (-lambda)
+    -- TODO: numerically unstable pdf. Idea: compute logarithmised expression first
+    sampleProbabilityOf (PoissonDistribution lambda) k = undefined
+    {--
+      | k>=0      = lambda^k * (exp (-lambda)) / (fromIntegral $ fact k)
       | otherwise = 0
+      where
+        fact k | k>1       = k * (fact (k-1)) 
+               | otherwise = 1--}
 
   newtype BinomialDistribution = BinomialDistribution (Int,Double) deriving Show
   binomialDistributionFromNMean n mean = BinomialDistribution (n,p) where
@@ -116,109 +139,77 @@ module PIRaTE.RandomSample where
       let successes = length . filter (<=p) $ (us::[Double])
       return successes
 
-    sampleProbabilityOf (BinomialDistribution (n,p)) k =
-        (fromIntegral $ binomial n k) * p^k * (1-p)^(n-k)
+    sampleProbabilityOf (BinomialDistribution (n,p)) k
+      | k<0 || k>n || n<0 || p<0 || p>1 = 0
+      | otherwise = (fromIntegral $ binomial n k) * p^k * (1-p)^(n-k)
   
   binomial n k = foldl (\i (l,m) -> i*l `div` m) 1 $ zipWith (,) [n-k+1..n] [1..k]
   
-  -- distribution for length of unchanged light-/sensornodes (r,s) for known nodecount n and mean deleted node count mu
-  newtype DelBoundsDist = DelBoundsDist (Int,Double)
-  instance Sampleable DelBoundsDist (Int,Int) where
-    randomSampleFrom (DelBoundsDist (n,p)) g = do
-      let kddist = BinomialDistribution (n,p)
-      kd <- randomSampleFrom kddist g
-      let ks = n - kd
-          rmin | kd==0     = 1
-               | otherwise = 0
-          rmax = min ks (n-1) --r (or s) mustn't be equal to n, because we shouldn't sample the lightsubpath starting at the sensationpoint
-          rdist = UniformDistribution (rmin,rmax)
-      r <- randomSampleFrom rdist g
-      let s = ks - r
-      return (r,s)
-    
-    sampleProbabilityOf (DelBoundsDist (n,p)) (r,s)
-      | any (==0) probs = 0
-      | otherwise = product probs 
-      where
-        --probs  = trace ("|kddist="++show kddist++",kdprob="++show kdprob++",rprob="++show rprob++"|") [kdprob,rprob]
-        probs  = [kdprob,rprob]
-        kdprob = sampleProbabilityOf kddist kd
-        rprob  = sampleProbabilityOf rdist   r
-        kddist = BinomialDistribution (n,p)
-        rdist  = UniformDistribution (rmin,rmax)
-        rmax = min ks (n-1)
-        rmin | kd==0     = 1
-             | otherwise = 0
-        kd = n - ks
-        ks = r + s
-
-  
-  -- distribution for number of added light-/sensorsubpath-scatteringnodes for mean added node count mu
-  newtype AddBoundsDist = AddBoundsDist Double
-  instance Sampleable AddBoundsDist (Int,Int) where
-    randomSampleFrom (AddBoundsDist mu) g = do
-      let kadist = geometricDistributionFromMean mu
-      ka <- randomSampleFrom kadist g
-      let idist = UniformDistribution (0,ka)
-      i <- randomSampleFrom idist g
-      let j = ka - i
-      return (i,j)
-    
-    sampleProbabilityOf (AddBoundsDist mu) (i,j)
-      | any (==0) probs = 0
-      | otherwise = product probs 
-      where
-        probs = [kaprob,iprob]
-        kaprob = sampleProbabilityOf kadist ka
-        iprob  = sampleProbabilityOf idist   i
-        kadist = geometricDistributionFromMean mu
-        idist = UniformDistribution (0,ka)
-        ka = i + j
   
   newtype RIJSDist = RIJSDist (Int,Double)
   instance Sampleable RIJSDist (Int,Int,Int,Int) where
     randomSampleFrom (RIJSDist (n,p)) g = do
-      let deldist = DelBoundsDist (n,p)
-      (r,s) <- randomSampleFrom deldist g
-      let kd = n - r - s
-          meanka = max 1 (fromIntegral kd)
-          adddist = AddBoundsDist meanka
-      (i',j') <- randomSampleFrom adddist g
-      let i | r==0 && i'==0 = 1 -- TODO: if r==0, i can still be zero, as long as i+j=ka>0 !
-            | otherwise     = i'
-          j | s==0 && j'==0 = 1
-            | otherwise     = j'
-      let healthy_rijs = {--trace (show n++show (r,i,j,s)) $ --}assertRIJS n (r,i,j,s)
-      if not healthy_rijs
+      let kddist = BinomialDistribution (n,p)
+      kd <- randomSampleFrom kddist g
+      let ks = n - kd
+          (rmin,rmax) | kd==0     = (1,ks-1)
+                      | otherwise = (0,ks)
+          --r (or s) mustn't be equal to n, because we shouldn't sample the lightsubpath starting at the sensationpoint
+          rdist = UniformDistribution (rmin,rmax)
+      r <- randomSampleFrom rdist g
+      let s = ks - r
+          meanka' = max 1 (fromIntegral kd)
+          ka'dist = geometricDistributionFromMean meanka'
+      ka' <- randomSampleFrom ka'dist g
+      let changeguarantee | ks==n     = 1
+                          | otherwise = 0
+          twonodeguarantee = length . filter (==0) $ [r,s]
+          deltaka = max changeguarantee twonodeguarantee
+          ka = ka' + deltaka
+          idist = UniformDistribution (0,ka)
+      i <- randomSampleFrom idist g
+      let j = ka - i
+          bad_rijs = {--trace (show n++show (r,i,j,s)) $ --}badRIJS n (r,i,j,s)
+      if bad_rijs
         then fail $ "RIJSDist: Assertion failed: n="++show n++", (r,i,j,s)="++show (r,i,j,s)
         else return (r,i,j,s)
       
     
     sampleProbabilityOf (RIJSDist (n,p)) (r,i,j,s)
-      | not healthy_rijs = 0
+      | bad_rijs = 0
       | any (==0) probs = 0
       | otherwise = product probs
       where
-        healthy_rijs = assertRIJS n (r,i,j,s)
-        probs = [rsprob,ijprob]
-        rsprob = sampleProbabilityOf deldist (r,s)
-        ijprob = sum [sampleProbabilityOf adddist (i',j') | i'<-is, j'<-js]
-        is | r==0 && i==1 = [0,1] -- because we originally could've sampled an i' of zero and would still have returned i=1
-           | otherwise    = [i]
-        js | s==0 && j==1 = [0,1] -- because we originally could've sampled an j' of zero and would still have returned j=1
-           | otherwise    = [j]
-        deldist = DelBoundsDist (n,p)
-        adddist = AddBoundsDist meanka
-        meanka = max 1 (fromIntegral kd)
-        kd = n - r - s
+        bad_rijs = badRIJS n (r,i,j,s)
+        probs = [kdprob,rprob,ka'prob,iprob]
+        kdprob  = sampleProbabilityOf  kddist  kd
+        rprob   = sampleProbabilityOf   rdist   r
+        ka'prob = sampleProbabilityOf ka'dist ka'
+        iprob   = sampleProbabilityOf   idist   i
+        kddist = BinomialDistribution (n,p)
+        rdist = UniformDistribution (rmin,rmax)
+        (rmin,rmax) | kd==0     = (1,ks-1)
+                    | otherwise = (0,ks)
+        ka'dist = geometricDistributionFromMean meanka'
+        meanka' = max 1 (fromIntegral kd)
+        ka' = ka - deltaka
+        deltaka = max changeguarantee twonodeguarantee
+        changeguarantee | ks==n     = 1
+                        | otherwise = 0
+        twonodeguarantee = length . filter (==0) $ [r,s]
+        idist = UniformDistribution (0,ka)
+        kd = n - ks
+        ka = i + j
+        ks = r + s
+
 
   -- tells, if (r,i,j,s) is legal for given n
-  assertRIJS n (r,i,j,s) = and
-    [r >= 0, r < n
-    ,s >= 0, s < n
-    ,i >= 0, j >= 0
-    ,r+s <= n
-    ,i+j >= minka
+  badRIJS n (r,i,j,s) = or
+    [r < 0, r >= n
+    ,s < 0, s >= n
+    ,i < 0, j < 0
+    ,r+s > n
+    ,i+j < minka
     ]
     where minka = length . filter (==0) $ [r,s]
 
@@ -258,6 +249,11 @@ module PIRaTE.RandomSample where
   runRandomSampler sampler seedint = runST $ do
     gen <- initialize . singletonU $ fromIntegral seedint
     randomSampleFrom sampler gen
+  
+  takeRandomSamples :: (Sampleable a b) => a -> Int -> Int -> [b]
+  takeRandomSamples sampler seedint n = runST $ do
+    gen <- initialize . singletonU $ fromIntegral seedint
+    (replicateM n . randomSampleFrom sampler) gen
   
   instance Arbitrary Point where
     arbitrary = runRandomSampler expsampler `fmap` arbitrary where
