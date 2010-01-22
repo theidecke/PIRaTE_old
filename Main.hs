@@ -62,13 +62,13 @@ module Main where
   
   standardScene sigma = let
       lightsourcecontainer = Container $ Sphere (Vector3 0 0 0) 0.01
-      lightsourcematerial = toHomogenousEmittingMaterial 1.0 (1, PhaseFunction $ Isotropic)
+      lightsourcematerial = toHomogenousEmittingMaterial 10000.0 (1, PhaseFunction $ Isotropic)
       lightsourceentity = Entity lightsourcecontainer [lightsourcematerial]
       scatteringcontainer = Container $ Sphere (Vector3 0 0 0) 1
       scatteringmaterial = toHomogenousInteractingMaterial 0 sigma (1,PhaseFunction Isotropic)
       scatteringentity = Entity scatteringcontainer [scatteringmaterial]
       sensorcontainer = Container $ fromCorners (Vector3 (-1) (-1) (-3.01)) (Vector3 1 1 (-3))
-      sensormaterial = toHomogenousSensingMaterial 1.0 (1, PhaseFunction $ fromApexAngle sensorangle, PathLength . mltStatePathLength)
+      sensormaterial = toHomogenousSensingMaterial 10000.0 (1, PhaseFunction $ fromApexAngle sensorangle, PathLength . mltStatePathLength)
       sensorangle = 1 * arcmin
       sensorentity = Entity sensorcontainer [sensormaterial]
       entities = [lightsourceentity, scatteringentity,sensorentity]

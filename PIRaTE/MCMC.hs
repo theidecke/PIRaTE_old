@@ -19,24 +19,17 @@ module PIRaTE.MCMC where
   metropolisStep :: Scene -> MutationList -> MLTState -> Gen s -> ST s MLTState
   metropolisStep scene mutations oldstate g = do
     mutation <- randomWeightedChoice mutations g
-    maybenewstate <- trace ("mutating oldpath="++(showPath . mltStatePath $ oldstate)) $ 
-                     mutateWith mutation scene oldstate g
+    maybenewstate <- mutateWith mutation scene oldstate g
     if (isNothing maybenewstate)
-      then --trace " failed, starting over" $
-           metropolisStep scene mutations oldstate g
+      then metropolisStep scene mutations oldstate g
       else do let newstate = fromJust maybenewstate
-                  accprob = (\x -> trace ("got newpath="++(showPath . mltStatePath $ newstate)++
-                                          "\na="++show x) x) $
-                            acceptanceProbabilityOf mutation scene oldstate newstate
+                  accprob = acceptanceProbabilityOf mutation scene oldstate newstate
               if accprob==0
-                then --trace " 0-prob:rejected" $ 
-                     return oldstate
+                then return oldstate
                 else do rnd <- uniform g
                         if rnd<=accprob
-                          then --trace " accepted" $ 
-                               return newstate
-                          else --trace " rejected" $ 
-                               return oldstate
+                          then return newstate
+                          else return oldstate
 
   nMLTSteps :: Scene -> MutationList -> Int -> MLTState -> Gen s -> ST s [MLTState]
   nMLTSteps scene mutations n initialstate g

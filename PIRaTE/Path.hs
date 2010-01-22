@@ -29,8 +29,7 @@ module PIRaTE.Path where
   measurementContribution scene path
     | any (==0) pointfactors = 0
     | otherwise = (product pointfactors) * exp (-opticaldepth) / geometricfactors
-    where pointfactors = trace "computing measurementContribution" $
-                         [emissivity,emissionpf,sensitivity,sensationpf] ++ scattercrosssections ++ scatteringpfs
+    where pointfactors = [emissivity,emissionpf,sensitivity,sensationpf] ++ scattercrosssections ++ scatteringpfs
           emissivity  = emitters `emissivityAt` emissionpoint
           sensitivity = sensors `sensitivityAt` sensationpoint
           scattercrosssections = map (scatterers `scatteringAt`) scatterpoints
@@ -97,13 +96,11 @@ module PIRaTE.Path where
     randomSampleFrom (SimpleBidirPathSampler (scene,pl)) g = do
       let nodecount = pl+1
           sampleplan = planFromNodeCount nodecount
-          lightnodes  = nodecount `div` 2
-          sensornodes = nodecount - lightnodes
+          sensornodes = max 2 $ (nodecount + 1) `div` 2
+          lightnodes  = nodecount - sensornodes
           sensorplan = take sensornodes . reverse $ sampleplan
           lightplan  = take lightnodes sampleplan
-          recursivesensingsampler  = trace ("sampling SimpleBidirPathSampler, nodecount="++show nodecount++
-                                            " lightplan="++show lightplan++" sensorplan="++show sensorplan)$
-                                     RecursivePathSampler2 (scene,Nothing,SamplePlan $ sensorplan)
+          recursivesensingsampler  = RecursivePathSampler2 (scene,Nothing,SamplePlan $ sensorplan)
           recursiveemittingsampler = RecursivePathSampler2 (scene,Nothing,SamplePlan $ lightplan)
       msensorpoints <- randomSampleFrom recursivesensingsampler g
       if (isNothing (msensorpoints::(Maybe Path)))
@@ -131,8 +128,8 @@ module PIRaTE.Path where
             lightpath  = take lightnodes path
             sensorplan = take sensornodes . reverse $ sampleplan
             lightplan  = take lightnodes sampleplan
-            sensornodes = nodecount - lightnodes
-            lightnodes  = nodecount `div` 2
+            lightnodes  = nodecount - sensornodes
+            sensornodes = max 2 $ (nodecount + 1) `div` 2
             sampleplan = planFromNodeCount nodecount
             nodecount = pl+1
     sampleProbabilityOf _ Nothing = undefined
