@@ -16,4 +16,9 @@ module PIRaTE.UtilityFunctions where
   edgeMap f     (a:[]) = []
   edgeMap f (a:b:rest) = f a b : edgeMap f (b:rest)
 
+  efficientProduct :: [Double] -> Double
+  efficientProduct factors
+    | any (==0) factors = 0
+    | otherwise         = product factors
+
   infinity = 1/(0::Double)

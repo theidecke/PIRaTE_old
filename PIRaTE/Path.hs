@@ -19,6 +19,7 @@ module PIRaTE.Path where
   import Test.QuickCheck hiding (Gen)
   import qualified Test.QuickCheck as QC (Gen)
   
+  import Debug.Trace
   --
   -- path stuff
   --
@@ -28,7 +29,8 @@ module PIRaTE.Path where
   measurementContribution scene path
     | any (==0) pointfactors = 0
     | otherwise = (product pointfactors) * exp (-opticaldepth) / geometricfactors
-    where pointfactors = [emissivity,emissionpf,sensitivity,sensationpf] ++ scattercrosssections ++ scatteringpfs
+    where pointfactors = trace "computing measurementContribution" $
+                         [emissivity,emissionpf,sensitivity,sensationpf] ++ scattercrosssections ++ scatteringpfs
           emissivity  = emitters `emissivityAt` emissionpoint
           sensitivity = sensors `sensitivityAt` sensationpoint
           scattercrosssections = map (scatterers `scatteringAt`) scatterpoints
@@ -90,6 +92,51 @@ module PIRaTE.Path where
             sampleplan = SamplePlan $ Sen:(replicate (pl-1) Sca)
     sampleProbabilityOf _ Nothing = undefined
 
+  newtype SimpleBidirPathSampler = SimpleBidirPathSampler (Scene,Int)
+  instance Sampleable SimpleBidirPathSampler (Maybe Path) where
+    randomSampleFrom (SimpleBidirPathSampler (scene,pl)) g = do
+      let nodecount = pl+1
+          sampleplan = planFromNodeCount nodecount
+          lightnodes  = nodecount `div` 2
+          sensornodes = nodecount - lightnodes
+          sensorplan = take sensornodes . reverse $ sampleplan
+          lightplan  = take lightnodes sampleplan
+          recursivesensingsampler  = trace ("sampling SimpleBidirPathSampler, nodecount="++show nodecount++
+                                            " lightplan="++show lightplan++" sensorplan="++show sensorplan)$
+                                     RecursivePathSampler2 (scene,Nothing,SamplePlan $ sensorplan)
+          recursiveemittingsampler = RecursivePathSampler2 (scene,Nothing,SamplePlan $ lightplan)
+      msensorpoints <- randomSampleFrom recursivesensingsampler g
+      if (isNothing (msensorpoints::(Maybe Path)))
+        then return Nothing
+        else do
+          mlightpoints <- randomSampleFrom recursiveemittingsampler g
+          if (isNothing mlightpoints)
+            then return Nothing
+            else do
+              let lightpath  = fromJust mlightpoints
+                  sensorpath = fromJust msensorpoints
+                  path = lightpath++(reverse sensorpath)
+              return $ Just path
+
+    sampleProbabilityOf (SimpleBidirPathSampler (scene,pl)) (Just path)
+      | pathLength path /= pl = 0
+      | any (==0) probs       = 0
+      | otherwise             = product probs
+      where probs = [sensorpathprob, lightpathprob]
+            sensorpathprob = sampleProbabilityOf recursivesensingsampler  (Just sensorpath)
+            lightpathprob  = sampleProbabilityOf recursiveemittingsampler (Just lightpath)
+            recursivesensingsampler  = RecursivePathSampler2 (scene,Nothing,SamplePlan $ sensorplan)
+            recursiveemittingsampler = RecursivePathSampler2 (scene,Nothing,SamplePlan $ lightplan)
+            sensorpath = take sensornodes . reverse $ path
+            lightpath  = take lightnodes path
+            sensorplan = take sensornodes . reverse $ sampleplan
+            lightplan  = take lightnodes sampleplan
+            sensornodes = nodecount - lightnodes
+            lightnodes  = nodecount `div` 2
+            sampleplan = planFromNodeCount nodecount
+            nodecount = pl+1
+    sampleProbabilityOf _ Nothing = undefined
+
 
   newtype SimplePathSampler = SimplePathSampler (Scene,Int)
   instance Sampleable SimplePathSampler (Maybe Path) where
@@ -109,14 +156,14 @@ module PIRaTE.Path where
     sampleProbabilityOf _ Nothing = undefined
   
   randomPathOfLength :: Scene -> Int -> Gen s -> ST s Path
-  randomPathOfLength scene n g = do
-    maybecompletepath <- randomSampleFrom (RaytracingPathSampler (scene,n)) g
+  randomPathOfLength scene pl g = do
+    maybecompletepath <- randomSampleFrom (RaytracingPathSampler (scene,pl)) g
     if (isNothing maybecompletepath)
-      then randomPathOfLength scene n g
+      then randomPathOfLength scene pl g
       else do
         let completepath = fromJust maybecompletepath
         if (measurementContribution scene completepath)==0
-          then randomPathOfLength scene n g
+          then randomPathOfLength scene pl g
           else return completepath
 
 

@@ -29,6 +29,7 @@ module Main where
       NewEmissionPoint(..),
       SimpleRandomPathLength(..),
       RaytracingRandomPathLength(..),
+      SimpleBidirRandomPathLength(..),
       BidirPathSub(..)
     )
 
@@ -47,7 +48,7 @@ module Main where
                      ent2 = Entity cont2 [mat2]
                      ent3 = Entity cont3 [mat3]
                      ent4 = Entity cont4 [mat4]
-                     sensorcontainer = Container $ fromCorners (Vector3 (-1) (-1) (-3.01)) (Vector3 1 1 (-3))
+                     sensorcontainer = Container $ fromCorners (Vector3 (-1) (-1) (-3.005)) (Vector3 1 1 (-2.995))
                      sensormaterial = toHomogenousSensingMaterial 1.0 (1, PhaseFunction $ fromApexAngle sensorangle, PathLength . mltStatePathLength)
                      sensorangle = 1 * arcmin
                      sensorentity = Entity sensorcontainer [sensormaterial]
@@ -138,12 +139,13 @@ module Main where
   main = do
     [gridsize,n] <- map read `fmap` getArgs
     let mutations1 = [(Mutation $ RaytracingRandomPathLength (2.0*sigma)    ,  1)]
+        mutations1b= [(Mutation $ SimpleBidirRandomPathLength (2.0*sigma)   ,  1)]
         mutations2 = [(Mutation $ ExponentialImageNodeTranslation 0.1       , 10)
                      ,(Mutation $ ExponentialScatteringNodeTranslation 0.1  , 10)
                      ,(Mutation $ RaytracingRandomPathLength (2.0*sigma)    ,  3)
                      ,(Mutation $ NewEmissionPoint                          ,  1)
                      ]
-        mutations3 = [(Mutation $ BidirPathSub 1.0                          ,  1)]
+        mutations3 = [(Mutation $ BidirPathSub 1.9                          ,  1)]
         mutations4 = [(Mutation $ ExponentialImageNodeTranslation 0.1       ,  3)
                      ,(Mutation $ RaytracingRandomPathLength (2.0*sigma)    ,  7)
                      ,(Mutation $ BidirPathSub 1.0                          , 10)
@@ -155,7 +157,7 @@ module Main where
         scene = standardScene sigma--testScene
         sessionsize = min 100000 n --n
         sessioncount = n `div` sessionsize
-        startSampleSession size seed = mltAction scene mutations1 extractor seed size (min 2500 size)
+        startSampleSession size seed = mltAction scene mutations1b extractor seed size (min 2500 size)
         samples = concatMap (startSampleSession sessionsize) [1..sessioncount]
     putRadiallyBinnedPhotonCounts gridsize samples
     --putGridBinnedPhotonCounts gridsize samples

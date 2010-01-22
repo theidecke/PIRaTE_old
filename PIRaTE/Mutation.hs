@@ -11,7 +11,7 @@ module PIRaTE.Mutation where
   import Control.Monad (liftM)
   import Control.Monad.ST (ST)
   import PIRaTE.SpatialTypes
-  import PIRaTE.UtilityFunctions (mapAt,edgeMap)
+  import PIRaTE.UtilityFunctions (mapAt,edgeMap,efficientProduct)
   import PIRaTE.Sampleable
   import PIRaTE.RandomSample
   import PIRaTE.Scene
@@ -24,8 +24,10 @@ module PIRaTE.Mutation where
   -- t x y should return the transition probability from state x to state y
   defautAcceptanceProbability :: (a -> Double) -> (a -> a -> Double) -> a -> a -> Double
   defautAcceptanceProbability f t oldstate newstate
-    | a==0 || c==0 = 0
-    | otherwise = (a*c)/(b*d)
+    | any (==0) [a,c] = trace ("(f_n="++show a++", t_no="++show c++")") $
+                        0
+    | otherwise = trace ("("++show (a/b)++")/("++show (d/c)++")") $ 
+                  (a*c)/(b*d)
     where a = f newstate
           b = f oldstate
           c = t newstate oldstate
@@ -199,6 +201,32 @@ module PIRaTE.Mutation where
           newpathlength = pathLength newpath
           newpath = mltStatePath newstate
 
+  data SimpleBidirRandomPathLength = SimpleBidirRandomPathLength Double
+  instance Show SimpleBidirRandomPathLength where
+    show (SimpleBidirRandomPathLength l) = "SimpleBidirRandomPathLength(" ++ (show l) ++ ")"
+  instance Mutating SimpleBidirRandomPathLength where
+    mutateWith (SimpleBidirRandomPathLength l) scene oldstate g = do
+        geomdistsample <- randomSampleFrom geomdist g
+        let newpathlength = 1 + geomdistsample
+            simplepathsampler = SimpleBidirPathSampler (scene,newpathlength)
+        mnewpath <- randomSampleFrom simplepathsampler g
+        if (isNothing mnewpath)
+          then return Nothing
+          else return . Just $ mltStateSubstitutePath oldstate (fromJust mnewpath)
+      where geomdist = geometricDistributionFromMean (l-1)
+
+    acceptanceProbabilityOf (SimpleBidirRandomPathLength l) scene oldstate newstate =
+      defautAcceptanceProbability (measurementContribution scene) t oldstate newstate where
+        t _ newstate = trace "computing SimpleBidirRandomPathLength transition probability" $
+                       pathlengthprob * simplepathprob where
+          simplepathprob = sampleProbabilityOf simplepathsampler (Just newpath)
+          simplepathsampler = SimpleBidirPathSampler (scene,newpathlength)
+          pathlengthprob = sampleProbabilityOf geomdist geomdistsample
+          geomdistsample = newpathlength - 1
+          geomdist = geometricDistributionFromMean (l-1)
+          newpathlength = pathLength newpath
+          newpath = mltStatePath newstate
+
   data BidirPathSub = BidirPathSub Double
   instance Show BidirPathSub where
     show (BidirPathSub mu) = "BidirPathSub:("++show mu++")"
@@ -220,7 +248,9 @@ module PIRaTE.Mutation where
             sensorstarteray = fmap (\ep -> (ep,sensorstartwin)) sensorstartepoint
             lightsubpathplan  = take i . drop r $ newpathplan
             sensorsubpathplan = take j . drop s $ reverse newpathplan
-            lightsubpathsampler  = RecursivePathSampler2 (scene, lightstarteray,SamplePlan  lightsubpathplan)
+            lightsubpathsampler  = --trace ("n="++show n++" n'="++show (r+i+j+s)++" (r,i,j,s)="++show (r,i,j,s)++
+                                   --  "\n lplan="++show lightsubpathplan++" splan="++show sensorsubpathplan) $
+                                   RecursivePathSampler2 (scene, lightstarteray,SamplePlan  lightsubpathplan)
             sensorsubpathsampler = RecursivePathSampler2 (scene,sensorstarteray,SamplePlan sensorsubpathplan)
         mlightsubpath <- randomSampleFrom lightsubpathsampler g
         if (isNothing mlightsubpath)
@@ -240,10 +270,13 @@ module PIRaTE.Mutation where
     acceptanceProbabilityOf (BidirPathSub mu) scene oldstate newstate =
       defautAcceptanceProbability (measurementContribution scene) (bidirPathSubTransProb scene mu) oldstate newstate
   
-  bidirPathSubTransProb scene mu oldstate newstate
-    | unchangedpath = sum $ map getRIJSProb rijss
-    | otherwise     = sum [(getRIJSProb rijs)*(getSamplingProb rijs) | rijs<-rijss]
+  bidirPathSubTransProb scene meandeletednodes oldstate newstate
+    | unchangedpath = --mytrace $ 
+                      sum $ map getRIJSProb rijss
+    | otherwise     = --mytrace $ 
+                      sum [efficientProduct [getRIJSProb rijs, getSamplingProb rijs] | rijs<-rijss]
     where
+    mytrace = trace ("  n="++show n++" n'="++show n'++" (r',s')="++show (r',s')++"\n  rijss="++show rijss)
     getSamplingProb (r,i,j,s) = lightsubpathprob * sensorsubpathprob where
       lightsubpathprob  = sampleProbabilityOf  lightsubpathsampler (Just  lightsubpath)
       sensorsubpathprob = sampleProbabilityOf sensorsubpathsampler (Just sensorsubpath)
@@ -257,15 +290,14 @@ module PIRaTE.Mutation where
       sensorstarteray = fmap (\ep -> (ep,sensorstartwin)) sensorstartepoint
       lightstartepoint  = fmap (flip typifyPoint (last lstartpath)) $ listToMaybe (reverse $ take r newpathplan)
       sensorstartepoint = fmap (flip typifyPoint (last sstartpath)) $ listToMaybe (reverse $ take s (reverse newpathplan))
-      lightstartwin  |     r < 2 = undefined
-                     | otherwise = last . edgeMap (\u v -> fromEdge (v-u)) $ lstartpath
-      sensorstartwin |     s < 2 = undefined
-                     | otherwise = last . edgeMap (\u v -> fromEdge (v-u)) $ sstartpath
+      lightstartwin  = getStartWin r lstartpath
+      sensorstartwin = getStartWin s sstartpath
+      getStartWin rs startpath |    rs < 2 = undefined
+                               | otherwise = last . edgeMap (\u v -> fromEdge (v-u)) $ startpath
       lstartpath = take r newpath
       sstartpath = take s $ reverse newpath
-    newpathplan = planFromNodeCount n'
+      newpathplan = planFromNodeCount n'
     getRIJSProb = sampleProbabilityOf (RIJSDist (n,meandeletednodes))
-    meandeletednodes = mu
     rijss | unchangedpath = [(r,0,0,s) | r<-[1..n-1]   , s<-[n-r]]
           | otherwise     = [(r,i,j,s) | r<-[r']       , s<-[s']
                                        , i<-[0..n'-r-s], j<-[n'-r-s-i]

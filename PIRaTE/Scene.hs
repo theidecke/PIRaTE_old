@@ -29,6 +29,8 @@ module PIRaTE.Scene where
   import Test.QuickCheck hiding (Gen)
   import qualified Test.QuickCheck as QC (Gen)
   
+  import Debug.Trace
+  
   -- an Entity is a container filled with light-influencing material
   data Entity = Entity {
       entityContainer::Container,
@@ -276,12 +278,13 @@ module PIRaTE.Scene where
       | otherwise = do entity <- randomSampleFrom sensors g
                        let container = entityContainer entity
                        origin <- randomSampleFrom container g
-                       return (Just origin)
+                       trace ("sampled SensationPointSampler:"++(show . quantizeNode $ origin))$ return (Just origin)
       where sensors = sceneSensors scene
 
     sampleProbabilityOf (SensationPointSampler scene) (Just origin)
       | null sensors = 0
-      | otherwise = sum [(sampleProbabilityOf (entityContainer sensor) origin) *
+      | otherwise = trace ("probability for SensationPointSampler sampling:"++(show . quantizeNode $ origin))$ 
+                    sum [(sampleProbabilityOf (entityContainer sensor) origin) *
                          (sampleProbabilityOf sensors sensor) | sensor <- sensors]
       where sensors = sceneSensors scene `containing` origin
     sampleProbabilityOf (SensationPointSampler scene) Nothing =
@@ -310,12 +313,13 @@ module PIRaTE.Scene where
       | otherwise = do entity <- randomSampleFrom emitters g
                        let container = entityContainer entity
                        origin <- randomSampleFrom container g
-                       return (Just origin)
+                       trace ("sampled EmissionPointSampler:"++(show . quantizeNode $ origin))$ return (Just origin)
       where emitters = sceneEmitters scene
 
     sampleProbabilityOf (EmissionPointSampler scene) (Just origin)
       | null emitters = 0
-      | otherwise = sum [(sampleProbabilityOf (entityContainer emitter) origin) *
+      | otherwise = trace ("probability for EmissionPointSampler sampling:"++(show . quantizeNode $ origin))$ 
+                    sum [(sampleProbabilityOf (entityContainer emitter) origin) *
                          (sampleProbabilityOf emitters emitter) | emitter <- emitters]
       where emitters = sceneEmitters scene `containing` origin
     sampleProbabilityOf (EmissionPointSampler scene) Nothing =
@@ -343,12 +347,13 @@ module PIRaTE.Scene where
       | otherwise = do entity <- randomSampleFrom scatterers g
                        let container = entityContainer entity
                        origin <- randomSampleFrom container g
-                       return (Just origin)
+                       trace ("sampled ScatteringPointSampler:"++(show . quantizeNode $ origin))$ return (Just origin)
       where scatterers = sceneScatterers scene
 
     sampleProbabilityOf (ScatteringPointSampler scene) (Just origin)
       | null scatterers = 0
-      | otherwise = sum [(sampleProbabilityOf (entityContainer scatterer) origin) *
+      | otherwise = trace ("probability for ScatteringPointSampler sampling:"++(show . quantizeNode $ origin))$ 
+                    sum [(sampleProbabilityOf (entityContainer scatterer) origin) *
                          (sampleProbabilityOf scatterers scatterer) | scatterer <- scatterers]
       where scatterers = sceneScatterers scene `containing` origin
     sampleProbabilityOf (ScatteringPointSampler scene) Nothing =
@@ -390,7 +395,7 @@ module PIRaTE.Scene where
     randomSampleFrom (SensationDirectionSampler (scene,origin)) g
       | null sensors = return Nothing
       | otherwise = do direction <- randomSampleFrom (weightedsensor,origin) g
-                       return (Just direction)
+                       trace ("sampled SensationDirectionSampler:"++(show . quantizeNode . unDirection $ direction))$ return (Just direction)
       where weightedsensor = materialSensor originmat
             originmat = summedMaterialAt sensors origin
             sensors = sceneSensors scene `containing` origin
@@ -398,7 +403,8 @@ module PIRaTE.Scene where
 
     sampleProbabilityOf (SensationDirectionSampler (scene,origin)) (Just direction)
       | null sensors = 0
-      | otherwise = sampleProbabilityOf (weightedsensor, origin) direction
+      | otherwise = trace ("probability for SensationDirectionSampler sampling:"++(show . quantizeNode . unDirection $ direction))$ 
+                    sampleProbabilityOf (weightedsensor, origin) direction
       where weightedsensor = materialSensor originmat
             originmat = summedMaterialAt sensors origin
             sensors = sceneSensors scene `containing` origin
@@ -423,14 +429,15 @@ module PIRaTE.Scene where
     randomSampleFrom (EmissionDirectionSampler (scene,origin)) g
       | null emitters = return Nothing
       | otherwise = do direction <- randomSampleFrom (weightedphasefunction, Ray origin undefined) g
-                       return (Just direction)
+                       trace ("sampled EmissionDirectionSampler:"++(show . quantizeNode . unDirection $ direction))$ return (Just direction)
       where weightedphasefunction = materialEmissionDirectedness originmat
             originmat = summedMaterialAt emitters origin
             emitters = sceneEmitters scene `containing` origin
             
     sampleProbabilityOf (EmissionDirectionSampler (scene,origin)) (Just direction)
       | null emitters = 0
-      | otherwise = sampleProbabilityOf (weightedphasefunction, Ray origin undefined) direction
+      | otherwise = trace ("probability for EmissionDirectionSampler sampling:"++(show . quantizeNode . unDirection $ direction))$ 
+                    sampleProbabilityOf (weightedphasefunction, Ray origin undefined) direction
       where weightedphasefunction = materialEmissionDirectedness originmat
             originmat = summedMaterialAt emitters origin
             emitters = sceneEmitters scene `containing` origin
@@ -458,14 +465,15 @@ module PIRaTE.Scene where
     randomSampleFrom (ScatteringDirectionSampler (scene,origin,win)) g
       | null scatterers = return Nothing
       | otherwise = do wout <- randomSampleFrom (weightedphasefunction, Ray origin win) g
-                       return (Just wout)
+                       trace ("sampled ScatteringDirectionSampler:"++(show . quantizeNode . unDirection $ wout))$ return (Just wout)
       where weightedphasefunction = materialScatteringPhaseFunction originmat
             originmat = summedMaterialAt scatterers origin
             scatterers = sceneScatterers scene `containing` origin
             
     sampleProbabilityOf (ScatteringDirectionSampler (scene,origin,win)) (Just wout)
       | null scatterers = 0
-      | otherwise = sampleProbabilityOf (weightedphasefunction, Ray origin win) wout
+      | otherwise = trace ("probability for ScatteringDirectionSampler sampling:"++(show . quantizeNode . unDirection $ wout))$ 
+                    sampleProbabilityOf (weightedphasefunction, Ray origin win) wout
       where weightedphasefunction = materialScatteringPhaseFunction originmat
             originmat = summedMaterialAt scatterers origin
             scatterers = sceneScatterers scene `containing` origin
@@ -499,12 +507,13 @@ module PIRaTE.Scene where
       "in Scene: " ++ show scene
   instance Sampleable SensationDistanceSampler (Maybe Double) where
     randomSampleFrom (SensationDistanceSampler (scene,origin,direction)) g =
-      randomSampleFrom distsampler g
+      trace ("sampled SensationDistanceSampler")$ randomSampleFrom distsampler g
       where distsampler = UniformDepthDistanceSampleable (sensors, materialSensitivity, Ray origin direction)
             sensors = sceneSensors scene
     {-# INLINE randomSampleFrom #-}
 
     sampleProbabilityOf (SensationDistanceSampler (scene,origin,direction)) distance = 
+      trace ("probability for SensationDistanceSampler")$ 
       sampleProbabilityOf distsampler distance
       where distsampler = UniformDepthDistanceSampleable (sensors, materialSensitivity, Ray origin direction)
             sensors = sceneSensors scene
@@ -529,12 +538,13 @@ module PIRaTE.Scene where
       "in Scene: " ++ show scene
   instance Sampleable EmissionDistanceSampler (Maybe Double) where
     randomSampleFrom (EmissionDistanceSampler (scene,origin,direction)) g =
-      randomSampleFrom distsampler g
+      trace ("sampled EmissionDistanceSampler")$ randomSampleFrom distsampler g
       where distsampler = UniformDepthDistanceSampleable (emitters, materialEmissivity, Ray origin direction)
             emitters = sceneEmitters scene
     {-# INLINE randomSampleFrom #-}
 
     sampleProbabilityOf (EmissionDistanceSampler (scene,origin,direction)) distance = 
+      trace ("probability for EmissionDistanceSampler")$ 
       sampleProbabilityOf distsampler distance
       where distsampler = UniformDepthDistanceSampleable (emitters, materialEmissivity, Ray origin direction)
             emitters = sceneEmitters scene
@@ -559,12 +569,13 @@ module PIRaTE.Scene where
       "in Scene: " ++ show scene
   instance Sampleable ScatteringDistanceSampler (Maybe Double) where
     randomSampleFrom (ScatteringDistanceSampler (scene,origin,direction)) g =
-      randomSampleFrom distsampler g
+      trace ("sampled ScatteringDistanceSampler")$ randomSampleFrom distsampler g
       where distsampler = UniformAttenuationDistanceSampleable (scatterers, materialScattering, Ray origin direction)
             scatterers = sceneScatterers scene
     {-# INLINE randomSampleFrom #-}
 
     sampleProbabilityOf (ScatteringDistanceSampler (scene,origin,direction)) distance = 
+      trace ("probability for ScatteringDistanceSampler")$ 
       sampleProbabilityOf distsampler distance
       where distsampler = UniformAttenuationDistanceSampleable (scatterers, materialScattering, Ray origin direction)
             scatterers = sceneScatterers scene
