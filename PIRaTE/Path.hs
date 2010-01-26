@@ -94,14 +94,8 @@ module PIRaTE.Path where
   newtype SimpleBidirPathSampler = SimpleBidirPathSampler (Scene,Int)
   instance Sampleable SimpleBidirPathSampler (Maybe Path) where
     randomSampleFrom (SimpleBidirPathSampler (scene,pl)) g = do
-      let nodecount = pl+1
-          sampleplan = planFromNodeCount nodecount
-          sensornodes = max 2 $ (nodecount + 1) `div` 2
-          lightnodes  = nodecount - sensornodes
-          sensorplan = take sensornodes . reverse $ sampleplan
-          lightplan  = take lightnodes sampleplan
-          recursivesensingsampler  = RecursivePathSampler2 (scene,Nothing,SamplePlan $ sensorplan)
-          recursiveemittingsampler = RecursivePathSampler2 (scene,Nothing,SamplePlan $ lightplan)
+      let plans = simpleBidirPlansFromNodeCounts . simpleBidirNodeCountsFromPathLength $ pl
+          (recursiveemittingsampler, recursivesensingsampler) = simpleBidirSamplersFromPlans scene plans
       msensorpoints <- randomSampleFrom recursivesensingsampler g
       if (isNothing (msensorpoints::(Maybe Path)))
         then return Nothing
@@ -121,20 +115,29 @@ module PIRaTE.Path where
       | otherwise             = product probs
       where probs = [sensorpathprob, lightpathprob]
             sensorpathprob = sampleProbabilityOf recursivesensingsampler  (Just sensorpath)
-            lightpathprob  = sampleProbabilityOf recursiveemittingsampler (Just lightpath)
-            recursivesensingsampler  = RecursivePathSampler2 (scene,Nothing,SamplePlan $ sensorplan)
-            recursiveemittingsampler = RecursivePathSampler2 (scene,Nothing,SamplePlan $ lightplan)
             sensorpath = take sensornodes . reverse $ path
+            lightpathprob  = sampleProbabilityOf recursiveemittingsampler (Just lightpath)
             lightpath  = take lightnodes path
-            sensorplan = take sensornodes . reverse $ sampleplan
-            lightplan  = take lightnodes sampleplan
-            lightnodes  = nodecount - sensornodes
-            sensornodes = max 2 $ (nodecount + 1) `div` 2
-            sampleplan = planFromNodeCount nodecount
-            nodecount = pl+1
+            (recursiveemittingsampler, recursivesensingsampler) = simpleBidirSamplersFromPlans scene plans
+            plans = simpleBidirPlansFromNodeCounts (lightnodes,sensornodes)
+            (lightnodes, sensornodes) = simpleBidirNodeCountsFromPathLength pl
     sampleProbabilityOf _ Nothing = undefined
 
+  simpleBidirSamplersFromPlans scene (lightplan,sensorplan) = (recursiveemittingsampler, recursivesensingsampler) where
+    recursivesensingsampler  = RecursivePathSampler2 (scene,Nothing,SamplePlan $ sensorplan)
+    recursiveemittingsampler = RecursivePathSampler2 (scene,Nothing,SamplePlan $ lightplan)
 
+  simpleBidirPlansFromNodeCounts (lightnodes,sensornodes) = (lightplan,sensorplan) where
+    lightplan  = take lightnodes sampleplan
+    sensorplan = take sensornodes . reverse $ sampleplan
+    sampleplan = planFromNodeCount nodecount
+    nodecount = lightnodes + sensornodes
+
+  simpleBidirNodeCountsFromPathLength pl = (lightnodes,sensornodes) where
+    lightnodes  = nodecount - sensornodes
+    sensornodes = max 2 $ (nodecount + 1) `div` 2
+    nodecount = pl+1
+    
   newtype SimplePathSampler = SimplePathSampler (Scene,Int)
   instance Sampleable SimplePathSampler (Maybe Path) where
     randomSampleFrom (SimplePathSampler (scene,pl)) g = do
