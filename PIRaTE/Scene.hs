@@ -502,13 +502,13 @@ module PIRaTE.Scene where
   instance Sampleable SensationDistanceSampler (Maybe Double) where
     randomSampleFrom (SensationDistanceSampler (scene,origin,direction)) g =
       randomSampleFrom distsampler g
-      where distsampler = UniformDepthDistanceSampleable (sensors, materialSensitivity, Ray origin direction)
+      where distsampler = UniformAttenuation2Sampleable (sensors, materialSensitivity, Ray origin direction)
             sensors = sceneSensors scene
     {-# INLINE randomSampleFrom #-}
 
     sampleProbabilityOf (SensationDistanceSampler (scene,origin,direction)) distance = 
       sampleProbabilityOf distsampler distance
-      where distsampler = UniformDepthDistanceSampleable (sensors, materialSensitivity, Ray origin direction)
+      where distsampler = UniformAttenuation2Sampleable (sensors, materialSensitivity, Ray origin direction)
             sensors = sceneSensors scene
     {-# INLINE sampleProbabilityOf #-}
 
@@ -532,13 +532,13 @@ module PIRaTE.Scene where
   instance Sampleable EmissionDistanceSampler (Maybe Double) where
     randomSampleFrom (EmissionDistanceSampler (scene,origin,direction)) g =
       randomSampleFrom distsampler g
-      where distsampler = UniformDepthDistanceSampleable (emitters, materialEmissivity, Ray origin direction)
+      where distsampler = UniformAttenuation2Sampleable (emitters, materialEmissivity, Ray origin direction)
             emitters = sceneEmitters scene
     {-# INLINE randomSampleFrom #-}
 
     sampleProbabilityOf (EmissionDistanceSampler (scene,origin,direction)) distance = 
       sampleProbabilityOf distsampler distance
-      where distsampler = UniformDepthDistanceSampleable (emitters, materialEmissivity, Ray origin direction)
+      where distsampler = UniformAttenuation2Sampleable (emitters, materialEmissivity, Ray origin direction)
             emitters = sceneEmitters scene
     {-# INLINE sampleProbabilityOf #-}
 
@@ -562,13 +562,13 @@ module PIRaTE.Scene where
   instance Sampleable ScatteringDistanceSampler (Maybe Double) where
     randomSampleFrom (ScatteringDistanceSampler (scene,origin,direction)) g =
       randomSampleFrom distsampler g
-      where distsampler = UniformDepthDistanceSampleable (scatterers, materialScattering, Ray origin direction)
+      where distsampler = UniformAttenuation2Sampleable (scatterers, materialScattering, Ray origin direction)
             scatterers = sceneScatterers scene
     {-# INLINE randomSampleFrom #-}
 
     sampleProbabilityOf (ScatteringDistanceSampler (scene,origin,direction)) distance = 
       sampleProbabilityOf distsampler distance
-      where distsampler = UniformDepthDistanceSampleable (scatterers, materialScattering, Ray origin direction)
+      where distsampler = UniformAttenuation2Sampleable (scatterers, materialScattering, Ray origin direction)
             scatterers = sceneScatterers scene
     {-# INLINE sampleProbabilityOf #-}
 
@@ -604,6 +604,34 @@ module PIRaTE.Scene where
       in endpointvalue * (exp (-depth))
     sampleProbabilityOf _ Nothing = samplingNothingError "UniformAttenuationDistanceSampleable"
 
+  newtype UniformAttenuation2Sampleable = UniformAttenuation2Sampleable DistanceSamplerParameters
+  instance Sampleable UniformAttenuation2Sampleable (Maybe Double) where
+    randomSampleFrom (UniformAttenuation2Sampleable (entities,materialproperty,ray)) g
+      | totaldepth==0 = return Nothing
+      | otherwise = do u1 <- uniform g
+                       let absorptionatinfinity = (1 - (exp (-totaldepth)))
+                           randomdepth = negate $ log (1 - absorptionatinfinity * (u1::Double))
+                           proberesult = probeToInfinity randomdepth
+                           distance = getProbeResultDist proberesult
+                       return distance
+      where totaldepth = fromJust $ getProbeResultDepth totaldepthproberesult
+            totaldepthproberesult = probeToInfinity infinity
+            probeToInfinity = probePropertyOfEntitiesWithRay materialproperty entities ray infinity
+
+    sampleProbabilityOf (UniformAttenuation2Sampleable (entities,
+                                                        materialproperty,
+                                                        ray@(Ray origin (Direction direction))
+                                                        ))
+                        (Just distance)
+      = --trace ("totaldepth="++show totaldepth++" ,endpointvalue="++show endpointvalue) $
+        endpointvalue * (exp (-endpointdepth)) / absorptionatinfinity
+        where absorptionatinfinity = (1 - (exp (-totaldepth)))
+              endpointvalue = propertyAt materialproperty entities endpoint
+              endpoint = origin + distance *<> direction
+              endpointdepth = fromJust . getProbeResultDepth $ probeMedia distance infinity
+              totaldepth    = fromJust . getProbeResultDepth $ probeMedia infinity infinity
+              probeMedia = probePropertyOfEntitiesWithRay materialproperty entities ray
+    sampleProbabilityOf _ Nothing = samplingNothingError "UniformAttenuation2Sampleable"
 
   newtype UniformDepthDistanceSampleable = UniformDepthDistanceSampleable DistanceSamplerParameters
   instance Sampleable UniformDepthDistanceSampleable (Maybe Double) where
