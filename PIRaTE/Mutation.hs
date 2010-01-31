@@ -4,7 +4,7 @@
 {-# LANGUAGE ParallelListComp #-}
 
 module PIRaTE.Mutation where
-  import Data.Vector (Vector3(..),(*<>),vmag)
+  import Data.Vector (Vector3(..),(|*),vmag)
   import Data.Maybe (fromMaybe,isNothing,fromJust,listToMaybe)
   import qualified Data.List as L (findIndex)
   import Statistics.RandomVariate (Gen,uniform)

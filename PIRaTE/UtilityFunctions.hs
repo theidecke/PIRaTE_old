@@ -3,7 +3,7 @@ module PIRaTE.UtilityFunctions where
   
   -- some utility functions
   normsq v = v `vdot` v
-  normalize v = (1/vmag v) *<> v
+  normalize v = (1/vmag v) |* v
   
   -- applies f only at the kth element of the list and let's the rest untouched
   mapAt :: Int -> (a->a) -> [a] -> [a]

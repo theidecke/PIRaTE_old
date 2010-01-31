@@ -4,7 +4,7 @@
 {-# LANGUAGE ExistentialQuantification #-}
 
 module PIRaTE.Scene where
-  import Data.Vector ((*<>),vmag,Vector3(..))
+  import Data.Vector ((|*),vmag,Vector3(..))
   import Data.Monoid
   import Data.Maybe (fromMaybe,fromJust,isNothing,isJust)
   import Data.Array.Vector (singletonU)
@@ -254,7 +254,7 @@ module PIRaTE.Scene where
   depthOfBetween :: (Material -> Texture Double) -> [Entity] -> Point -> Point -> Double
   depthOfBetween propertyof entities v w = let
       distance = vmag $ w - v
-      ray = Ray v (Direction $ (1/distance)*<>(w-v))
+      ray = Ray v (Direction $ (1/distance)|*(w-v))
       proberesult = probePropertyOfEntitiesWithRay propertyof entities ray distance infinity
     in fromJust $ getProbeResultDepth proberesult
 
@@ -598,7 +598,7 @@ module PIRaTE.Scene where
                                                               Ray origin (Direction direction)
                                                               ))
                         (Just distance) =
-      let endpoint = origin + distance *<> direction
+      let endpoint = origin + distance |* direction
           depth = depthOfBetween materialproperty entities origin endpoint
           endpointvalue = propertyAt materialproperty entities endpoint
       in endpointvalue * (exp (-depth))
@@ -627,7 +627,7 @@ module PIRaTE.Scene where
         endpointvalue * (exp (-endpointdepth)) / absorptionatinfinity
         where absorptionatinfinity = (1 - (exp (-totaldepth)))
               endpointvalue = propertyAt materialproperty entities endpoint
-              endpoint = origin + distance *<> direction
+              endpoint = origin + distance |* direction
               endpointdepth = fromJust . getProbeResultDepth $ probeMedia distance infinity
               totaldepth    = fromJust . getProbeResultDepth $ probeMedia infinity infinity
               probeMedia = probePropertyOfEntitiesWithRay materialproperty entities ray
@@ -653,7 +653,7 @@ module PIRaTE.Scene where
       = --trace ("totaldepth="++show totaldepth++" ,endpointvalue="++show endpointvalue) $
         endpointvalue / totaldepth
         where endpointvalue = propertyAt materialproperty entities endpoint
-              endpoint = origin + distance *<> direction
+              endpoint = origin + distance |* direction
               totaldepth = fromJust $ getProbeResultDepth totaldepthproberesult
               totaldepthproberesult = probePropertyOfEntitiesWithRay materialproperty entities ray infinity infinity
     sampleProbabilityOf _ Nothing = samplingNothingError "UniformDepthDistanceSampleable"

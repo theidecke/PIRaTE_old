@@ -2,7 +2,7 @@
 {-# LANGUAGE TypeSynonymInstances #-}
 
 module PIRaTE.Container.Sphere where
-  import Data.Vector ((*<>),vdot)
+  import Data.Vector ((|*),vdot)
   import PIRaTE.SpatialTypes
   import PIRaTE.UtilityFunctions (normsq)
   import PIRaTE.Confineable
@@ -44,6 +44,6 @@ module PIRaTE.Container.Sphere where
     {-# INLINE sampleProbabilityOf #-}
     randomSampleFrom     (Sphere center radius) g =  do
       unitpoint <- randomPointInUnitSphere g
-      return $ center + radius *<> unitpoint
+      return $ center + radius |* unitpoint
     {-# INLINE randomSampleFrom #-}
     

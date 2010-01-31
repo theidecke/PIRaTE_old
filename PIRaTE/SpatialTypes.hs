@@ -41,7 +41,7 @@ module PIRaTE.SpatialTypes where
     } deriving (Eq)
     
   followFor :: Ray -> Double -> Point
-  followFor (Ray origin (Direction direction)) distance = origin + distance *<> direction
+  followFor (Ray origin (Direction direction)) distance = origin + distance |* direction
   
   instance Show Ray where
     show (Ray o d) = "Ray starting at "++ (showVector3 o) ++" going in Direction "++ (show d) 

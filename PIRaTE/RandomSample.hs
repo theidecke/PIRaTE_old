@@ -12,7 +12,7 @@ module PIRaTE.RandomSample where
   import Statistics.RandomVariate
   import Statistics.Distribution (quantile)
   import Statistics.Distribution.Exponential (fromLambda)
-  import Data.Vector (Vector3(..),(*<>),vmag)
+  import Data.Vector (Vector3(..),(|*),vmag)
   import qualified Data.WeighedSet as WS
   import PIRaTE.SpatialTypes
   import PIRaTE.UtilityFunctions (normsq,infinity)
@@ -223,7 +223,7 @@ module PIRaTE.RandomSample where
     randomSampleFrom (Exponential3DPointSampler lambda) g = do
       (Direction rdir) <- randomIsotropicDirection g
       rexp <- distributionSample (fromLambda (1/lambda)) g
-      return $ rexp *<> rdir
+      return $ rexp |* rdir
 
     sampleProbabilityOf (Exponential3DPointSampler lambda) p = (exp (-r/lambda))/(4*pi*lambda*r^2)
                                                                where r = vmag p

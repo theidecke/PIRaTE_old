@@ -4,7 +4,7 @@
 {-# LANGUAGE ExistentialQuantification #-}
 
 module PIRaTE.Path where
-  import Data.Vector (Vector3(..),vmag,(*<>))
+  import Data.Vector (Vector3(..),vmag,(|*))
   import Data.Maybe (isNothing,fromJust,isJust)
   import Data.List (isPrefixOf)
   import Control.Monad (replicateM,sequence,liftM,liftM2,foldM)
@@ -424,7 +424,7 @@ module PIRaTE.Path where
       where dirprob  = sampleProbabilityOf  dirsampler (Just  dir)
             distprob = sampleProbabilityOf distsampler (Just dist)
             distsampler = dir2distsampler dir
-            dir = Direction $ (1/dist) *<> edge --fromEdge edge
+            dir = Direction $ (1/dist) |* edge --fromEdge edge
             dist = vmag edge
             edge = p - origin
             origin = dirSamplerOrigin dirsampler
