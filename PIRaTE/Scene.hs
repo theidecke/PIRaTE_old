@@ -502,15 +502,19 @@ module PIRaTE.Scene where
   instance Sampleable SensationDistanceSampler (Maybe Double) where
     randomSampleFrom (SensationDistanceSampler (scene,origin,direction)) g =
       randomSampleFrom distsampler g
-      where distsampler = UniformAttenuation2Sampleable (sensors, materialSensitivity, Ray origin direction)
-            sensors = sceneSensors scene
+      where distsampler = getSensationDistanceSampler scene origin direction
     {-# INLINE randomSampleFrom #-}
 
     sampleProbabilityOf (SensationDistanceSampler (scene,origin,direction)) distance = 
       sampleProbabilityOf distsampler distance
-      where distsampler = UniformAttenuation2Sampleable (sensors, materialSensitivity, Ray origin direction)
-            sensors = sceneSensors scene
+      where distsampler = getSensationDistanceSampler scene origin direction
     {-# INLINE sampleProbabilityOf #-}
+    
+  getSensationDistanceSampler scene origin direction = UniformDepthDistanceSampleable (sensors, property, ray) where
+    sensors = sceneSensors scene
+    property = materialSensitivity
+    ray = Ray origin direction
+  {-# INLINE getSensationDistanceSampler #-}
 
   prop_SensationDistanceSampler_nonzeroProb :: Scene -> Int -> Property
   prop_SensationDistanceSampler_nonzeroProb scene seedint =
@@ -532,15 +536,19 @@ module PIRaTE.Scene where
   instance Sampleable EmissionDistanceSampler (Maybe Double) where
     randomSampleFrom (EmissionDistanceSampler (scene,origin,direction)) g =
       randomSampleFrom distsampler g
-      where distsampler = UniformAttenuation2Sampleable (emitters, materialEmissivity, Ray origin direction)
-            emitters = sceneEmitters scene
+      where distsampler = getEmissionDistanceSampler scene origin direction
     {-# INLINE randomSampleFrom #-}
 
     sampleProbabilityOf (EmissionDistanceSampler (scene,origin,direction)) distance = 
       sampleProbabilityOf distsampler distance
-      where distsampler = UniformAttenuation2Sampleable (emitters, materialEmissivity, Ray origin direction)
-            emitters = sceneEmitters scene
+      where distsampler = getEmissionDistanceSampler scene origin direction
     {-# INLINE sampleProbabilityOf #-}
+
+  getEmissionDistanceSampler scene origin direction = UniformDepthDistanceSampleable (emitters, property, ray) where
+    emitters = sceneEmitters scene
+    property = materialEmissivity
+    ray = Ray origin direction
+  {-# INLINE getEmissionDistanceSampler #-}
 
   prop_EmissionDistanceSampler_nonzeroProb :: Scene -> Int -> Property
   prop_EmissionDistanceSampler_nonzeroProb scene seedint =
@@ -562,16 +570,20 @@ module PIRaTE.Scene where
   instance Sampleable ScatteringDistanceSampler (Maybe Double) where
     randomSampleFrom (ScatteringDistanceSampler (scene,origin,direction)) g =
       randomSampleFrom distsampler g
-      where distsampler = UniformAttenuation2Sampleable (scatterers, materialScattering, Ray origin direction)
-            scatterers = sceneScatterers scene
+      where distsampler = getScatteringDistanceSampler scene origin direction
     {-# INLINE randomSampleFrom #-}
 
     sampleProbabilityOf (ScatteringDistanceSampler (scene,origin,direction)) distance = 
       sampleProbabilityOf distsampler distance
-      where distsampler = UniformAttenuation2Sampleable (scatterers, materialScattering, Ray origin direction)
-            scatterers = sceneScatterers scene
+      where distsampler = getScatteringDistanceSampler scene origin direction
     {-# INLINE sampleProbabilityOf #-}
 
+  getScatteringDistanceSampler scene origin direction = UniformAttenuation2Sampleable (scatterers, property, ray) where
+    scatterers = sceneScatterers scene
+    property = materialScattering
+    ray = Ray origin direction
+  {-# INLINE getScatteringDistanceSampler #-}
+  
   prop_ScatteringDistanceSampler_nonzeroProb :: Scene -> Int -> Property
   prop_ScatteringDistanceSampler_nonzeroProb scene seedint =
     isJust mdist ==> sampleprob > 0
