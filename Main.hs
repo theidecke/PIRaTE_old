@@ -138,21 +138,22 @@ module Main where
     
   main = do
     [gridsize,n] <- map read `fmap` getArgs
-    let mutations1 = [(Mutation $ RaytracingRandomPathLength (2.0*sigma)    ,  1)]
-        mutations1b= [(Mutation $ SimpleBidirRandomPathLength (2.0*sigma)   ,  1)]
+    let mutations1 = [(Mutation $ RaytracingRandomPathLength  avgpathlength ,  1)]
+        mutations1b= [(Mutation $ SimpleBidirRandomPathLength avgpathlength ,  1)]
         mutations2 = [(Mutation $ ExponentialImageNodeTranslation 0.1       , 10)
                      ,(Mutation $ ExponentialScatteringNodeTranslation 0.1  , 10)
-                     ,(Mutation $ SimpleBidirRandomPathLength (2.0*sigma)   ,  5)
-                     ,(Mutation $ RaytracingRandomPathLength (2.0*sigma)    ,  3)
+                     ,(Mutation $ SimpleBidirRandomPathLength avgpathlength ,  5)
+                     ,(Mutation $ RaytracingRandomPathLength  avgpathlength ,  3)
                      ,(Mutation $ NewEmissionPoint                          ,  1)
                      ]
         mutations3 = [(Mutation $ BidirPathSub 1.5                          ,  1)]
         mutations4 = [(Mutation $ ExponentialImageNodeTranslation 0.08      , 10)
                      ,(Mutation $ ExponentialScatteringNodeTranslation 0.1  , 10)
-                     ,(Mutation $ RaytracingRandomPathLength (2.0*sigma)    , 10)
-                     ,(Mutation $ SimpleBidirRandomPathLength (2.0*sigma)   , 10)
+                     ,(Mutation $ RaytracingRandomPathLength  avgpathlength , 10)
+                     ,(Mutation $ SimpleBidirRandomPathLength avgpathlength , 10)
                      ,(Mutation $ BidirPathSub 1.0                          , 10)
                      ]
+        avgpathlength = max 1.1 (2.0*sigma) --shouldn't be less than or equal 1.0
         extractor = (\v -> (v3x v, v3y v)) . last . mltStatePath
         --extractor = mltStatePathLength
         chunksize = min 2500 n
