@@ -48,7 +48,7 @@ module Main where
                      ent2 = Entity cont2 [mat2]
                      ent3 = Entity cont3 [mat3]
                      ent4 = Entity cont4 [mat4]
-                     sensorcontainer = Container $ fromCorners (Vector3 (-1) (-1) (-3.005)) (Vector3 1 1 (-2.995))
+                     sensorcontainer = Container $ fromCorners (Vector3 (-1) (-1) (-4.1)) (Vector3 1 1 (-3.9))
                      sensormaterial = toHomogenousSensingMaterial 1.0 (1, PhaseFunction $ fromApexAngle sensorangle, PathLength . mltStatePathLength)
                      sensorangle = 1 * arcmin
                      sensorentity = Entity sensorcontainer [sensormaterial]
@@ -67,7 +67,7 @@ module Main where
       scatteringcontainer = Container $ Sphere (Vector3 0 0 0) 1
       scatteringmaterial = toHomogenousInteractingMaterial 0 sigma (1,PhaseFunction Isotropic)
       scatteringentity = Entity scatteringcontainer [scatteringmaterial]
-      sensorcontainer = Container $ fromCorners (Vector3 (-1) (-1) (-3.01)) (Vector3 1 1 (-3))
+      sensorcontainer = Container $ fromCorners (Vector3 (-1) (-1) (-4.1)) (Vector3 1 1 (-3.9))
       sensormaterial = toHomogenousSensingMaterial 10000.0 (1, PhaseFunction $ fromApexAngle sensorangle, PathLength . mltStatePathLength)
       sensorangle = 1 * arcmin
       sensorentity = Entity sensorcontainer [sensormaterial]
@@ -142,24 +142,27 @@ module Main where
         mutations1b= [(Mutation $ SimpleBidirRandomPathLength (2.0*sigma)   ,  1)]
         mutations2 = [(Mutation $ ExponentialImageNodeTranslation 0.1       , 10)
                      ,(Mutation $ ExponentialScatteringNodeTranslation 0.1  , 10)
+                     ,(Mutation $ SimpleBidirRandomPathLength (2.0*sigma)   ,  5)
                      ,(Mutation $ RaytracingRandomPathLength (2.0*sigma)    ,  3)
                      ,(Mutation $ NewEmissionPoint                          ,  1)
                      ]
-        mutations3 = [(Mutation $ BidirPathSub 1.9                          ,  1)]
-        mutations4 = [(Mutation $ ExponentialImageNodeTranslation 0.1       ,  3)
-                     ,(Mutation $ RaytracingRandomPathLength (2.0*sigma)    ,  7)
+        mutations3 = [(Mutation $ BidirPathSub 1.5                          ,  1)]
+        mutations4 = [(Mutation $ ExponentialImageNodeTranslation 0.08      , 10)
+                     ,(Mutation $ ExponentialScatteringNodeTranslation 0.1  , 10)
+                     ,(Mutation $ RaytracingRandomPathLength (2.0*sigma)    , 10)
+                     ,(Mutation $ SimpleBidirRandomPathLength (2.0*sigma)   , 10)
                      ,(Mutation $ BidirPathSub 1.0                          , 10)
                      ]
         extractor = (\v -> (v3x v, v3y v)) . last . mltStatePath
         --extractor = mltStatePathLength
         chunksize = min 2500 n
-        sigma = 1.0
-        scene = standardScene sigma--testScene
+        sigma = 0.1
+        scene = standardScene sigma --testScene
         sessionsize = min 100000 n --n
         sessioncount = n `div` sessionsize
-        startSampleSession size seed = mltAction scene mutations1b extractor seed size (min 2500 size)
+        startSampleSession size seed = mltAction scene mutations4 extractor seed size (min 2500 size)
         samples = concatMap (startSampleSession sessionsize) [1..sessioncount]
-    putRadiallyBinnedPhotonCounts gridsize samples
-    --putGridBinnedPhotonCounts gridsize samples
+    --putRadiallyBinnedPhotonCounts gridsize samples
+    putGridBinnedPhotonCounts gridsize samples
     --putPhotonList samples
     --putPathLengthList samples

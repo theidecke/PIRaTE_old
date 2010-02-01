@@ -135,7 +135,7 @@ module PIRaTE.Path where
 
   simpleBidirNodeCountsFromPathLength pl = (lightnodes,sensornodes) where
     lightnodes  = nodecount - sensornodes
-    sensornodes = max 2 $ (nodecount + 1) `div` 2
+    sensornodes = max 2 ((nodecount + 1) `div` 2) --max 2 (nodecount - 1) --2
     nodecount = pl+1
     
   newtype SimplePathSampler = SimplePathSampler (Scene,Int)

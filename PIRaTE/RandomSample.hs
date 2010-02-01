@@ -95,7 +95,7 @@ module PIRaTE.RandomSample where
   newtype GeometricDistribution = GeometricDistribution Double deriving Show
   geometricDistributionFromMean mu
     | mu >=0    = GeometricDistribution (1 / (mu + 1))
-    | otherwise = error "geometricDistributionFromMean: mu<0"
+    | otherwise = error ("geometricDistributionFromMean: mu<0, mu="++show mu)
 
   instance Sampleable GeometricDistribution Int where
     randomSampleFrom (GeometricDistribution p') g = geometricSample' p' 0 g where

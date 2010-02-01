@@ -103,6 +103,7 @@ module PIRaTE.Mutation where
       defautAcceptanceProbability (measurementContribution scene) translationInvariant oldstate newstate
 
 
+  --TODO: instead of a randomtranslation that may end up in the void, use a UniformAttenuation2DistanceSampler to get the new sensationpoint
   data ExponentialImageNodeTranslation = ExponentialImageNodeTranslation Double
   instance Show ExponentialImageNodeTranslation where
     show (ExponentialImageNodeTranslation lambda) = "ExponentialImageNodeTranslation(" ++ (show lambda) ++ ")"
