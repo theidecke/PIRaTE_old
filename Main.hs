@@ -138,32 +138,33 @@ module Main where
     
   main = do
     [gridsize,n] <- map read `fmap` getArgs
-    let mutations1 = [(Mutation $ RaytracingRandomPathLength  avgpathlength ,  1)]
-        mutations1b= [(Mutation $ SimpleBidirRandomPathLength avgpathlength ,  1)]
-        mutations2 = [(Mutation $ ExponentialImageNodeTranslation 0.1       , 10)
-                     ,(Mutation $ ExponentialScatteringNodeTranslation 0.1  , 10)
-                     ,(Mutation $ SimpleBidirRandomPathLength avgpathlength ,  5)
-                     ,(Mutation $ RaytracingRandomPathLength  avgpathlength ,  3)
-                     ,(Mutation $ NewEmissionPoint                          ,  1)
+    let mutations1 = [(Mutation $ RaytracingRandomPathLength  avgscatternodes ,  1)]
+        mutations1b= [(Mutation $ SimpleBidirRandomPathLength avgscatternodes ,  1)]
+        mutations2 = [(Mutation $ ExponentialImageNodeTranslation 0.1         , 10)
+                     ,(Mutation $ ExponentialScatteringNodeTranslation 0.1    , 10)
+                     ,(Mutation $ SimpleBidirRandomPathLength avgscatternodes ,  5)
+                     ,(Mutation $ RaytracingRandomPathLength  avgscatternodes ,  3)
+                     ,(Mutation $ NewEmissionPoint                            ,  1)
                      ]
-        mutations3 = [(Mutation $ BidirPathSub 1.5                          ,  1)]
-        mutations4 = [(Mutation $ ExponentialImageNodeTranslation 0.08      , 10)
-                     ,(Mutation $ ExponentialScatteringNodeTranslation 0.1  , 10)
-                     ,(Mutation $ RaytracingRandomPathLength  avgpathlength , 10)
-                     ,(Mutation $ SimpleBidirRandomPathLength avgpathlength , 10)
-                     ,(Mutation $ BidirPathSub 1.0                          , 10)
+        mutations3 = [(Mutation $ BidirPathSub 1.0                            ,  1)]
+        mutations4 = [(Mutation $ ExponentialImageNodeTranslation 0.08        , 10)
+                     ,(Mutation $ ExponentialScatteringNodeTranslation 0.1    , 10)
+                     ,(Mutation $ RaytracingRandomPathLength  avgscatternodes , 10)
+                     ,(Mutation $ SimpleBidirRandomPathLength avgscatternodes , 10)
+                     ,(Mutation $ BidirPathSub 1.0                            , 10)
                      ]
-        avgpathlength = max 1.1 (2.0*sigma) --shouldn't be less than or equal 1.0
+        avgscatternodes = 2.0*sigma --shouldn't be less than or equal 0.0
+        avgpathlength = 2.0
         extractor = (\v -> (v3x v, v3y v)) . last . mltStatePath
         --extractor = mltStatePathLength
         chunksize = min 2500 n
-        sigma = 0.1
+        sigma = 1.0
         scene = standardScene sigma --testScene
         sessionsize = min 100000 n --n
         sessioncount = n `div` sessionsize
-        startSampleSession size seed = mltAction scene mutations4 extractor seed size (min 2500 size)
+        startSampleSession size seed = mltAction scene mutations1b extractor seed size (min 2500 size)
         samples = concatMap (startSampleSession sessionsize) [1..sessioncount]
-    --putRadiallyBinnedPhotonCounts gridsize samples
-    putGridBinnedPhotonCounts gridsize samples
+    putRadiallyBinnedPhotonCounts gridsize samples
+    --putGridBinnedPhotonCounts gridsize samples
     --putPhotonList samples
     --putPathLengthList samples

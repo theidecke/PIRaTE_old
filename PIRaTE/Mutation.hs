@@ -177,52 +177,50 @@ module PIRaTE.Mutation where
 
   data RaytracingRandomPathLength = RaytracingRandomPathLength Double
   instance Show RaytracingRandomPathLength where
-    show (RaytracingRandomPathLength l) = "RaytracingRandomPathLength(" ++ (show l) ++ ")"
+    show (RaytracingRandomPathLength ns) = "RaytracingRandomPathLength(" ++ (show ns) ++ ")"
   instance Mutating RaytracingRandomPathLength where
-    mutateWith (RaytracingRandomPathLength l) scene oldstate g = do
+    mutateWith (RaytracingRandomPathLength ns) scene oldstate g = do
         geomdistsample <- randomSampleFrom geomdist g
-        let newpathlength = 1 + geomdistsample
-            simplepathsampler = RaytracingPathSampler (scene,newpathlength)
+        let newns = geomdistsample
+            simplepathsampler = RaytracingPathSampler (scene,newns)
         mnewpath <- randomSampleFrom simplepathsampler g
         if (isNothing mnewpath)
           then return Nothing
           else return . Just $ mltStateSubstitutePath oldstate (fromJust mnewpath)
-      where geomdist = geometricDistributionFromMean (l-1)
+      where geomdist = geometricDistributionFromMean ns
 
-    acceptanceProbabilityOf (RaytracingRandomPathLength l) scene oldstate newstate =
+    acceptanceProbabilityOf (RaytracingRandomPathLength ns) scene oldstate newstate =
       defautAcceptanceProbability (measurementContribution scene) t oldstate newstate where
         t _ newstate = pathlengthprob * simplepathprob where
           simplepathprob = sampleProbabilityOf simplepathsampler (Just newpath)
-          simplepathsampler = RaytracingPathSampler (scene,newpathlength)
+          simplepathsampler = RaytracingPathSampler (scene,newns)
           pathlengthprob = sampleProbabilityOf geomdist geomdistsample
-          geomdistsample = newpathlength - 1
-          geomdist = geometricDistributionFromMean (l-1)
-          newpathlength = pathLength newpath
+          geomdistsample = newns
+          geomdist = geometricDistributionFromMean ns
+          newns = (pathNodeCount newpath) - 2
           newpath = mltStatePath newstate
 
   data SimpleBidirRandomPathLength = SimpleBidirRandomPathLength Double
   instance Show SimpleBidirRandomPathLength where
-    show (SimpleBidirRandomPathLength l) = "SimpleBidirRandomPathLength(" ++ (show l) ++ ")"
+    show (SimpleBidirRandomPathLength ns) = "SimpleBidirRandomPathLength(" ++ (show ns) ++ ")"
   instance Mutating SimpleBidirRandomPathLength where
-    mutateWith (SimpleBidirRandomPathLength l) scene oldstate g = do
-        geomdistsample <- randomSampleFrom geomdist g
-        let newpathlength = 1 + geomdistsample
-            simplepathsampler = SimpleBidirPathSampler (scene,newpathlength)
+    mutateWith (SimpleBidirRandomPathLength ns) scene oldstate g = do
+        newns <- randomSampleFrom geomdist g
+        let simplepathsampler = SimpleBidirPathSampler (scene,newns)
         mnewpath <- randomSampleFrom simplepathsampler g
         if (isNothing mnewpath)
           then return Nothing
           else return . Just $ mltStateSubstitutePath oldstate (fromJust mnewpath)
-      where geomdist = geometricDistributionFromMean (l-1)
+      where geomdist = geometricDistributionFromMean ns
 
-    acceptanceProbabilityOf (SimpleBidirRandomPathLength l) scene oldstate newstate =
+    acceptanceProbabilityOf (SimpleBidirRandomPathLength ns) scene oldstate newstate =
       defautAcceptanceProbability (measurementContribution scene) t oldstate newstate where
         t _ newstate = pathlengthprob * simplepathprob where
           simplepathprob = sampleProbabilityOf simplepathsampler (Just newpath)
-          simplepathsampler = SimpleBidirPathSampler (scene,newpathlength)
-          pathlengthprob = sampleProbabilityOf geomdist geomdistsample
-          geomdistsample = newpathlength - 1
-          geomdist = geometricDistributionFromMean (l-1)
-          newpathlength = pathLength newpath
+          simplepathsampler = SimpleBidirPathSampler (scene,newns)
+          pathlengthprob = sampleProbabilityOf geomdist newns
+          geomdist = geometricDistributionFromMean ns
+          newns = (pathNodeCount newpath) - 2
           newpath = mltStatePath newstate
 
   data BidirPathSub = BidirPathSub Double
@@ -246,7 +244,8 @@ module PIRaTE.Mutation where
             sensorstarteray = fmap (\ep -> (ep,sensorstartwin)) sensorstartepoint
             lightsubpathplan  = take i . drop r $ newpathplan
             sensorsubpathplan = take j . drop s . reverse $ newpathplan
-            lightsubpathsampler  = RecursivePathSampler2 (scene, lightstarteray,SamplePlan  lightsubpathplan)
+            lightsubpathsampler  = --trace ("  n="++show n++" n'="++show n'++"  rijs="++show (r,i,j,s)) $
+                                   RecursivePathSampler2 (scene, lightstarteray,SamplePlan  lightsubpathplan)
             sensorsubpathsampler = RecursivePathSampler2 (scene,sensorstarteray,SamplePlan sensorsubpathplan)
         mlightsubpath <- randomSampleFrom lightsubpathsampler g
         if (isNothing mlightsubpath)

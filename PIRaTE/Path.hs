@@ -62,8 +62,8 @@ module PIRaTE.Path where
 
   newtype RaytracingPathSampler = RaytracingPathSampler (Scene,Int)
   instance Sampleable RaytracingPathSampler (Maybe Path) where
-    randomSampleFrom (RaytracingPathSampler (scene,pl)) g = do
-      let sampleplan = SamplePlan $ Sen:(replicate (pl-1) Sca)
+    randomSampleFrom (RaytracingPathSampler (scene,ns)) g = do
+      let sampleplan = SamplePlan $ Sen:(replicate ns Sca)
           recursivesensingsampler = RecursivePathSampler2 (scene,Nothing,sampleplan)
       mrecursivepoints <- randomSampleFrom recursivesensingsampler g
       if (isNothing (mrecursivepoints::(Maybe Path)))
@@ -78,23 +78,24 @@ module PIRaTE.Path where
                   path = emissionpoint:pathtail
               return $ Just path
 
-    sampleProbabilityOf (RaytracingPathSampler (scene,pl)) (Just path)
-      | pathLength path /= pl = 0
-      | any (==0) probs       = 0
-      | otherwise             = product probs
+    sampleProbabilityOf (RaytracingPathSampler (scene,ns)) (Just path)
+      | pathLength path /= (ns+1) = 0
+      | any (==0) probs           = 0
+      | otherwise                 = product probs
       where probs = [pathtailprob, emissionprob]
             pathtailprob  = sampleProbabilityOf revpathtailsampler (Just revpathtail)
             emissionprob  = sampleProbabilityOf (EmissionPointSampler scene) (Just emissionpoint)
             revpathtailsampler = RecursivePathSampler2 (scene,Nothing,sampleplan)
             revpathtail = reverse . tail $ path
             emissionpoint = head path
-            sampleplan = SamplePlan $ Sen:(replicate (pl-1) Sca)
+            sampleplan = SamplePlan $ Sen:(replicate ns Sca)
     sampleProbabilityOf _ Nothing = undefined
 
   newtype SimpleBidirPathSampler = SimpleBidirPathSampler (Scene,Int)
   instance Sampleable SimpleBidirPathSampler (Maybe Path) where
-    randomSampleFrom (SimpleBidirPathSampler (scene,pl)) g = do
-      let plans = simpleBidirPlansFromNodeCounts . simpleBidirNodeCountsFromPathLength $ pl
+    randomSampleFrom (SimpleBidirPathSampler (scene,ns)) g = do
+      let nodecount = 2 + ns
+          plans = simpleBidirPlansFromNodeCounts . simpleBidirDivideNodes $ nodecount
           (recursiveemittingsampler, recursivesensingsampler) = simpleBidirSamplersFromPlans scene plans
       msensorpoints <- randomSampleFrom recursivesensingsampler g
       if (isNothing (msensorpoints::(Maybe Path)))
@@ -109,10 +110,10 @@ module PIRaTE.Path where
                   path = lightpath++(reverse sensorpath)
               return $ Just path
 
-    sampleProbabilityOf (SimpleBidirPathSampler (scene,pl)) (Just path)
-      | pathLength path /= pl = 0
-      | any (==0) probs       = 0
-      | otherwise             = product probs
+    sampleProbabilityOf (SimpleBidirPathSampler (scene,ns)) (Just path)
+      | pathLength path /= (ns+1) = 0
+      | any (==0) probs           = 0
+      | otherwise                 = product probs
       where probs = [sensorpathprob, lightpathprob]
             sensorpathprob = sampleProbabilityOf recursivesensingsampler  (Just sensorpath)
             sensorpath = take sensornodes . reverse $ path
@@ -120,7 +121,8 @@ module PIRaTE.Path where
             lightpath  = take lightnodes path
             (recursiveemittingsampler, recursivesensingsampler) = simpleBidirSamplersFromPlans scene plans
             plans = simpleBidirPlansFromNodeCounts (lightnodes,sensornodes)
-            (lightnodes, sensornodes) = simpleBidirNodeCountsFromPathLength pl
+            (lightnodes, sensornodes) = simpleBidirDivideNodes nodecount
+            nodecount = 2 + ns
     sampleProbabilityOf _ Nothing = undefined
 
   simpleBidirSamplersFromPlans scene (lightplan,sensorplan) = (recursiveemittingsampler, recursivesensingsampler) where
@@ -133,21 +135,20 @@ module PIRaTE.Path where
     sampleplan = planFromNodeCount nodecount
     nodecount = lightnodes + sensornodes
 
-  simpleBidirNodeCountsFromPathLength pl = (lightnodes,sensornodes) where
+  simpleBidirDivideNodes nodecount = (lightnodes,sensornodes) where
     lightnodes  = nodecount - sensornodes
     sensornodes = max 2 ((nodecount + 1) `div` 2) --max 2 (nodecount - 1) --2
-    nodecount = pl+1
     
   newtype SimplePathSampler = SimplePathSampler (Scene,Int)
   instance Sampleable SimplePathSampler (Maybe Path) where
-    randomSampleFrom (SimplePathSampler (scene,pl)) g = do
+    randomSampleFrom (SimplePathSampler (scene,ns)) g = do
       emissionpoint <- randomSampleFrom (EmissionPointSampler scene) g
-      scatterpoints <- replicateM (pl-1) . randomSampleFrom (ScatteringPointSampler scene) $ g
+      scatterpoints <- replicateM ns . randomSampleFrom (ScatteringPointSampler scene) $ g
       sensationpoint <- randomSampleFrom (SensationPointSampler scene) g
       return . sequence $ [emissionpoint]++scatterpoints++[sensationpoint]
     
-    sampleProbabilityOf (SimplePathSampler (scene,pl)) (Just path)
-      | pathLength path /= pl = 0
+    sampleProbabilityOf (SimplePathSampler (scene,ns)) (Just path)
+      | pathLength path /= (ns+1) = 0
       | otherwise = emissionprob * scatterprobs * sensationprob
       where emissionprob  = sampleProbabilityOf (EmissionPointSampler  scene) (Just emissionpoint)
             scatterprobs  = product $ map ((sampleProbabilityOf (ScatteringPointSampler scene)).Just) scatterpoints
@@ -157,7 +158,8 @@ module PIRaTE.Path where
   
   randomPathOfLength :: Scene -> Int -> Gen s -> ST s Path
   randomPathOfLength scene pl g = do
-    maybecompletepath <- randomSampleFrom (RaytracingPathSampler (scene,pl)) g
+    let ns = pl+1
+    maybecompletepath <- randomSampleFrom (RaytracingPathSampler (scene,ns)) g
     if (isNothing maybecompletepath)
       then randomPathOfLength scene pl g
       else do
