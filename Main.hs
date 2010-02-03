@@ -62,13 +62,13 @@ module Main where
   
   standardScene sigma = let
       lightsourcecontainer = Container $ Sphere (Vector3 0 0 0) 0.01
-      lightsourcematerial = toHomogenousEmittingMaterial 10000.0 (1, PhaseFunction $ Isotropic)
+      lightsourcematerial = toHomogenousEmittingMaterial 1.0 (1, PhaseFunction $ Isotropic)
       lightsourceentity = Entity lightsourcecontainer [lightsourcematerial]
       scatteringcontainer = Container $ Sphere (Vector3 0 0 0) 1
       scatteringmaterial = toHomogenousInteractingMaterial 0 sigma (1,PhaseFunction Isotropic)
       scatteringentity = Entity scatteringcontainer [scatteringmaterial]
       sensorcontainer = Container $ fromCorners (Vector3 (-1) (-1) (-4.1)) (Vector3 1 1 (-3.9))
-      sensormaterial = toHomogenousSensingMaterial 10000.0 (1, PhaseFunction $ fromApexAngle sensorangle, PathLength . mltStatePathLength)
+      sensormaterial = toHomogenousSensingMaterial 1.0 (1, PhaseFunction $ fromApexAngle sensorangle, PathLength . mltStatePathLength)
       sensorangle = 1 * arcmin
       sensorentity = Entity sensorcontainer [sensormaterial]
       entities = [lightsourceentity, scatteringentity,sensorentity]
@@ -146,7 +146,7 @@ module Main where
                      ,(Mutation $ RaytracingRandomPathLength  avgscatternodes ,  3)
                      ,(Mutation $ NewEmissionPoint                            ,  1)
                      ]
-        mutations3 = [(Mutation $ BidirPathSub 1.0                            ,  1)]
+        mutations3 = [(Mutation $ BidirPathSub meankd                         ,  1)]
         mutations4 = [(Mutation $ ExponentialImageNodeTranslation 0.08        , 10)
                      ,(Mutation $ ExponentialScatteringNodeTranslation 0.1    , 10)
                      ,(Mutation $ RaytracingRandomPathLength  avgscatternodes , 10)
@@ -154,15 +154,15 @@ module Main where
                      ,(Mutation $ BidirPathSub 1.0                            , 10)
                      ]
         avgscatternodes = 2.0*sigma --shouldn't be less than or equal 0.0
-        avgpathlength = 2.0
+        meankd = 2.0
         extractor = (\v -> (v3x v, v3y v)) . last . mltStatePath
         --extractor = mltStatePathLength
         chunksize = min 2500 n
-        sigma = 1.0
+        sigma = 5.0
         scene = standardScene sigma --testScene
         sessionsize = min 100000 n --n
         sessioncount = n `div` sessionsize
-        startSampleSession size seed = mltAction scene mutations1b extractor seed size (min 2500 size)
+        startSampleSession size seed = mltAction scene mutations3 extractor seed size (min 2500 size)
         samples = concatMap (startSampleSession sessionsize) [1..sessioncount]
     putRadiallyBinnedPhotonCounts gridsize samples
     --putGridBinnedPhotonCounts gridsize samples

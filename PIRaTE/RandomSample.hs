@@ -169,8 +169,7 @@ module PIRaTE.RandomSample where
           idist = UniformDistribution (0,ka)
       i <- randomSampleFrom idist g
       let j = ka - i
-          bad_rijs = {--trace (show n++show (r,i,j,s)) $ --}badRIJS n (r,i,j,s)
-      if bad_rijs
+      if badRIJS n (r,i,j,s)
         then fail $ "RIJSDist: Assertion failed: n="++show n++", (r,i,j,s)="++show (r,i,j,s)
         else return (r,i,j,s)
       

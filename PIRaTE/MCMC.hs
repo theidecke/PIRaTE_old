@@ -10,6 +10,7 @@ module PIRaTE.MCMC where
   import PIRaTE.Mutation
 
   import Debug.Trace
+  import Text.Printf
   --
   -- metropolis stuff
   --
@@ -23,7 +24,8 @@ module PIRaTE.MCMC where
     if (isNothing maybenewstate)
       then metropolisStep scene mutations oldstate g
       else do let newstate = fromJust maybenewstate
-                  accprob = acceptanceProbabilityOf mutation scene oldstate newstate
+                  accprob = --trace =<< (printf "%f") $ 
+                            acceptanceProbabilityOf mutation scene oldstate newstate
               if accprob==0
                 then return oldstate
                 else do rnd <- uniform g
