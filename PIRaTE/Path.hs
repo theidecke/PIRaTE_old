@@ -51,6 +51,63 @@ module PIRaTE.Path where
           sensors     = sceneSensors     scene
           interactors = sceneInteractors scene
   
+  measurementContributionHelper :: Scene -> Path -> ([Double],[Double],[Double],[Double])
+  measurementContributionHelper scene path = (crosssections,phasefunctions,squareddists,opticaldepths) where
+    crosssections = [emissivity]++scattercrosssections++[sensitivity]
+    phasefunctions = [emissionpf]++scatteringpfs++[sensationpf]
+    squareddists = map normsq edges
+    opticaldepths = edgeMap (opticalDepthBetween interactors) path
+    emissivity  = emitters `emissivityAt` emissionpoint
+    sensitivity = sensors `sensitivityAt` sensationpoint
+    scattercrosssections = map (scatterers `scatteringAt`) scatterpoints
+    emissionpf  = sampleProbabilityOf (EmissionDirectionSampler  (scene,  emissionpoint)) (Just  emissiondir)
+    sensationpf = sampleProbabilityOf (SensationDirectionSampler (scene, sensationpoint)) (Just sensationdir)
+    scatteringpfs = [sampleProbabilityOf (ScatteringDirectionSampler (scene,p,win)) (Just wout)
+                     | p <- scatterpoints
+                     | (win,wout) <- scatterdirpairs]
+    (emissionpoint,scatterpoints,sensationpoint) = trisect path
+    emissiondir = head directions
+    sensationdir = (negate `appliedToDirection`) . last $ directions
+    scatterdirpairs = edgeMap (,) directions
+    directions = map fromEdge edges
+    edges = edgeMap (\u v -> v-u) path
+    emitters    = sceneEmitters    scene
+    scatterers  = sceneScatterers  scene
+    sensors     = sceneSensors     scene
+    interactors = sceneInteractors scene
+    
+  
+  measurementContributionQuotient :: Scene -> MLTState -> MLTState -> Double
+  measurementContributionQuotient scene oldstate newstate
+    | unchangedpath = 1
+    | any (==0) (newcrosssections' ++ newphasefunctions') = 0
+    | otherwise = nominator / denominator
+    where nominator   = product $ newcrosssections' ++ newphasefunctions' ++ oldsquareddists' ++ [exp deltatau]
+          denominator = product $ oldcrosssections' ++ oldphasefunctions' ++ newsquareddists'
+          deltatau = (sum oldopticaldepths') - (sum newopticaldepths')
+          newcrosssections'  =  take (n' - sharednodes )     . drop r  $ newcrosssections
+          newphasefunctions' =  take (n' - sharednodes')     . drop r' $ newphasefunctions
+          newsquareddists'   =  take ((n'-1) - sharednodes') . drop r' $ newsquareddists
+          newopticaldepths'  =  take ((n'-1) - sharednodes') . drop r' $ newopticaldepths
+          oldcrosssections'  =  take (n  - sharednodes )     . drop r  $ oldcrosssections
+          oldphasefunctions' =  take (n  - sharednodes')     . drop r' $ oldphasefunctions
+          oldsquareddists'   =  take ((n -1) - sharednodes') . drop r' $ oldsquareddists
+          oldopticaldepths'  =  take ((n -1) - sharednodes') . drop r' $ oldopticaldepths
+          sharednodes  = r  + s
+          sharednodes' = r' + s'
+          r' = max 0 (r - 1)
+          s' = max 0 (s - 1)
+          unchangedpath = r == n && s == n --oldpath==newpath
+          r = length . map fst . takeWhile (uncurry (==)) $ zip oldpath newpath
+          s = length . map fst . takeWhile (uncurry (==)) $ zip (reverse oldpath) (reverse newpath)
+          n  = pathNodeCount oldpath
+          n' = pathNodeCount newpath
+          (newcrosssections,newphasefunctions,newsquareddists,newopticaldepths) = mhelper newpath
+          (oldcrosssections,oldphasefunctions,oldsquareddists,oldopticaldepths) = mhelper oldpath
+          mhelper = measurementContributionHelper scene
+          newpath = mltStatePath newstate
+          oldpath = mltStatePath oldstate
+
   trisect :: [a] -> (a,[a],a)
   trisect [] = error "cannot trisect empty list"
   trisect (x:xs)
