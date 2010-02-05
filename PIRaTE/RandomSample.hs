@@ -141,9 +141,12 @@ module PIRaTE.RandomSample where
 
     sampleProbabilityOf (BinomialDistribution (n,p)) k
       | k<0 || k>n || n<0 || p<0 || p>1 = 0
-      | otherwise = (fromIntegral $ binomial n k) * p^k * (1-p)^(n-k)
+      | otherwise = (binomial n k) * p^k * (1 - p)^(n-k)
   
-  binomial n k = foldl (\i (l,m) -> i*l `div` m) 1 $ zipWith (,) [n-k+1..n] [1..k]
+  binomial :: Int -> Int -> Double
+  binomial n' k' = foldl (\i (l,m) -> i*l / m) 1 $ zipWith (,) [n-k+1..n] [1..k] where
+    n = fromIntegral n'
+    k = fromIntegral k'
   
   
   newtype RIJSDist = RIJSDist (Int,Double)
