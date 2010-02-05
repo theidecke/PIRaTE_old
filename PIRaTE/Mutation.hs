@@ -23,7 +23,6 @@ module PIRaTE.Mutation where
   defaultAcceptanceProbability :: Scene -> (MLTState -> MLTState -> Double) -> MLTState -> MLTState -> Double
   defaultAcceptanceProbability scene t oldstate newstate
     | any (==0) [fnew_div_fold,tno] = 0
-    | any (<0) [fnew_div_fold,tno,ton] = error ("fno="++show fnew_div_fold++" tno="++show tno++" ton="++show ton)
     | otherwise = (fnew_div_fold * tno) / ton
     where fnew_div_fold = measurementContributionQuotient scene oldstate newstate
           tno = t newstate oldstate
