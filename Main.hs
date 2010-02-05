@@ -137,7 +137,9 @@ module Main where
     reduceList [] = []
     
   main = do
-    [gridsize,n] <- map read `fmap` getArgs
+    args <- getArgs
+    --[gridsize,n] <- map read `fmap` args
+    let (gridsize,n,meankd,sigma) = (read (args!!0),read (args!!0),read (args!!0),read (args!!0))
     let mutations1 = [(Mutation $ RaytracingRandomPathLength  avgscatternodes ,  1)]
         mutations1b= [(Mutation $ SimpleBidirRandomPathLength avgscatternodes ,  1)]
         mutations2 = [(Mutation $ ExponentialImageNodeTranslation 0.1         , 10)
@@ -154,11 +156,11 @@ module Main where
                      ,(Mutation $ BidirPathSub 1.0                            , 10)
                      ]
         avgscatternodes = 2.0*sigma --shouldn't be less than or equal 0.0
-        meankd = 2.0
+        --meankd = 3.0
         extractor = (\v -> (v3x v, v3y v)) . last . mltStatePath
         --extractor = mltStatePathLength
         chunksize = min 2500 n
-        sigma = 5.0
+        --sigma = 5.0
         scene = standardScene sigma --testScene
         sessionsize = min 100000 n --n
         sessioncount = n `div` sessionsize
