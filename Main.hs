@@ -139,7 +139,7 @@ module Main where
   main = do
     args <- getArgs
     --[gridsize,n] <- map read `fmap` args
-    let (gridsize,n,meankd,sigma) = (read (args!!0),read (args!!0),read (args!!0),read (args!!0))
+    let (gridsize,n,meankd,sigma) = (read (args!!0),read (args!!1),read (args!!2),read (args!!3))
     let mutations1 = [(Mutation $ RaytracingRandomPathLength  avgscatternodes ,  1)]
         mutations1b= [(Mutation $ SimpleBidirRandomPathLength avgscatternodes ,  1)]
         mutations2 = [(Mutation $ ExponentialImageNodeTranslation 0.1         , 10)
