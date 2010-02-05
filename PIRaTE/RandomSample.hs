@@ -144,9 +144,12 @@ module PIRaTE.RandomSample where
       | otherwise = (binomial n k) * p^k * (1 - p)^(n-k)
   
   binomial :: Int -> Int -> Double
-  binomial n' k' = foldl (\i (l,m) -> i*l / m) 1 $ zipWith (,) [n-k+1..n] [1..k] where
-    n = fromIntegral n'
-    k = fromIntegral k'
+  binomial n' k'
+    | k'<0 || k'>n' = 0
+    | 2*k' > n'     = binomial n' (n'-k')
+    | otherwise     = foldl (\i (l,m) -> i*l / m) 1 $ zipWith (,) [n-k+1..n] [1..k] where
+                        n = fromIntegral n'
+                        k = fromIntegral k'
   
   
   newtype RIJSDist = RIJSDist (Int,Double)
