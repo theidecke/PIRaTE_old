@@ -1,8 +1,8 @@
 build :
-	ghc -O2 -fexcess-precision -funfolding-use-threshold=48 --make Main.hs
+	ghc -O2 -fexcess-precision -funfolding-use-threshold=48 -threaded --make Main.hs
 
 cleanbuild :
-	ghc -O2 -fexcess-precision -funfolding-use-threshold=48 -fforce-recomp --make Main.hs
+	ghc -O2 -fexcess-precision -funfolding-use-threshold=48 -threaded -fforce-recomp --make Main.hs
 
 buildprofilable : Main
   ghc -O2 -fexcess-precision -funfolding-use-threshold=48 --make Main.hs -prof -auto-all -caf-all -fforce-recomp

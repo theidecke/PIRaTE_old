@@ -162,7 +162,7 @@ module Main where
         chunksize = min 2500 n
         --sigma = 5.0
         scene = standardScene sigma --testScene
-        sessionsize = min 12500 n --n
+        sessionsize = min 10000 n --n
         sessioncount = n `div` sessionsize
         startSampleSession size seed = mltAction scene mutations3 extractor seed size (min 2500 size)
         samplesessions = map (startSampleSession sessionsize) [1..sessioncount] `using` parList rdeepseq
