@@ -20,11 +20,12 @@ module PIRaTE.Mutation where
   import Debug.Trace
   import Text.Printf
   
-  defaultAcceptanceProbability :: Scene -> (MLTState -> MLTState -> Double) -> MLTState -> MLTState -> Double
-  defaultAcceptanceProbability scene t oldstate newstate
+
+  defaultAcceptanceProbability :: Scene -> (MLTState -> MLTState -> Double) -> AugmentedState -> AugmentedState -> Double
+  defaultAcceptanceProbability scene t old@(oldstate,oldingredients) new@(newstate,newingredients)
     | any (==0) [fnew_div_fold,tno] = 0
     | otherwise = (fnew_div_fold * tno) / ton
-    where fnew_div_fold = measurementContributionQuotient scene oldstate newstate
+    where fnew_div_fold = measurementContributionQuotient scene old new
           tno = t newstate oldstate
           ton = t oldstate newstate
   
@@ -40,7 +41,7 @@ module PIRaTE.Mutation where
   --}
   class Mutating a where
     mutateWith              :: a -> Scene -> MLTState -> Gen s -> ST s (Maybe MLTState)
-    acceptanceProbabilityOf :: a -> Scene -> MLTState -> MLTState -> Double
+    acceptanceProbabilityOf :: a -> Scene -> AugmentedState -> AugmentedState -> Double
     
   -- define algebraic datatype which can hold all Mutations which adher to the 'Mutating' type class,
   data Mutation = forall s. (Show s, Mutating s) => Mutation s
@@ -91,8 +92,8 @@ module PIRaTE.Mutation where
       where nodecount = pathNodeCount oldpath
             oldpath   = mltStatePath oldstate
 
-    acceptanceProbabilityOf (ExponentialScatteringNodeTranslation l) scene oldstate newstate =
-      defaultAcceptanceProbability scene translationInvariant oldstate newstate
+    acceptanceProbabilityOf (ExponentialScatteringNodeTranslation l) scene =
+      defaultAcceptanceProbability scene translationInvariant
 
 
   --TODO: instead of a randomtranslation that may end up in the void, use a UniformAttenuation2DistanceSampler to get the new sensationpoint
@@ -117,11 +118,8 @@ module PIRaTE.Mutation where
             nodecount = pathNodeCount oldpath
             oldpath = mltStatePath oldstate
 
-    acceptanceProbabilityOf (ExponentialImageNodeTranslation l) scene oldstate newstate =
-      defaultAcceptanceProbability scene
-                                  (expImgNodeTrlTransitionProbability scene l)
-                                  oldstate
-                                  newstate
+    acceptanceProbabilityOf (ExponentialImageNodeTranslation l) scene =
+      defaultAcceptanceProbability scene (expImgNodeTrlTransitionProbability scene l)
       where
         expImgNodeTrlTransitionProbability :: Scene -> Double -> MLTState -> MLTState -> Double
         expImgNodeTrlTransitionProbability scene lambda oldstate newstate =
@@ -155,8 +153,8 @@ module PIRaTE.Mutation where
           else return . Just $ mltStateSubstitutePath oldstate (fromJust mnewpath)
       where geomdist = geometricDistributionFromMean (l-1)
 
-    acceptanceProbabilityOf (SimpleRandomPathLength l) scene oldstate newstate =
-      defaultAcceptanceProbability scene t oldstate newstate where
+    acceptanceProbabilityOf (SimpleRandomPathLength l) scene =
+      defaultAcceptanceProbability scene t where
         t _ newstate = pathlengthprob * simplepathprob where
           simplepathprob = sampleProbabilityOf simplepathsampler (Just newpath)
           simplepathsampler = SimplePathSampler (scene,newpathlength)
@@ -181,8 +179,8 @@ module PIRaTE.Mutation where
           else return . Just $ mltStateSubstitutePath oldstate (fromJust mnewpath)
       where geomdist = geometricDistributionFromMean ns
 
-    acceptanceProbabilityOf (RaytracingRandomPathLength ns) scene oldstate newstate =
-      defaultAcceptanceProbability scene t oldstate newstate where
+    acceptanceProbabilityOf (RaytracingRandomPathLength ns) scene =
+      defaultAcceptanceProbability scene t where
         t _ newstate = pathlengthprob * simplepathprob where
           simplepathprob = sampleProbabilityOf simplepathsampler (Just newpath)
           simplepathsampler = RaytracingPathSampler (scene,newns)
@@ -205,8 +203,8 @@ module PIRaTE.Mutation where
           else return . Just $ mltStateSubstitutePath oldstate (fromJust mnewpath)
       where geomdist = geometricDistributionFromMean ns
 
-    acceptanceProbabilityOf (SimpleBidirRandomPathLength ns) scene oldstate newstate =
-      defaultAcceptanceProbability scene t oldstate newstate where
+    acceptanceProbabilityOf (SimpleBidirRandomPathLength ns) scene =
+      defaultAcceptanceProbability scene t where
         t _ newstate = pathlengthprob * simplepathprob where
           simplepathprob = sampleProbabilityOf simplepathsampler (Just newpath)
           simplepathsampler = SimpleBidirPathSampler (scene,newns)
@@ -254,8 +252,8 @@ module PIRaTE.Mutation where
       where n = pathNodeCount oldpath
             oldpath = mltStatePath oldstate
 
-    acceptanceProbabilityOf (BidirPathSub mu) scene oldstate newstate =
-      defaultAcceptanceProbability scene (bidirPathSubTransProb scene mu) oldstate newstate
+    acceptanceProbabilityOf (BidirPathSub mu) scene =
+      defaultAcceptanceProbability scene (bidirPathSubTransProb scene mu)
 
   bidirPathSubTransProb scene meandeletednodes oldstate newstate
     | unchangedpath = --mytrace $ 

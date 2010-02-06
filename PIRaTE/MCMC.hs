@@ -6,7 +6,7 @@ module PIRaTE.MCMC where
   import PIRaTE.SpatialTypes
   import PIRaTE.RandomSample (randomWeightedChoice)
   import PIRaTE.Scene (Scene)
-  import PIRaTE.Path (randomPathOfLength)
+  import PIRaTE.Path (randomPathOfLength,measurementContributionHelper,MCFIngredients,AugmentedState)
   import PIRaTE.Mutation
 
   import Debug.Trace
@@ -17,39 +17,43 @@ module PIRaTE.MCMC where
   
   type MutationList = [(Mutation,Double)]
   
-  metropolisStep :: Scene -> MutationList -> MLTState -> Gen s -> ST s MLTState
-  metropolisStep scene mutations oldstate g = do
+  metropolisStep :: Scene -> MutationList -> AugmentedState -> Gen s -> ST s AugmentedState
+  metropolisStep scene mutations old@(oldstate,oldingredients) g = do
     mutation <- randomWeightedChoice mutations g
     maybenewstate <- mutateWith mutation scene oldstate g
     if (isNothing maybenewstate)
-      then metropolisStep scene mutations oldstate g
+      then metropolisStep scene mutations old g
       else do let newstate = fromJust maybenewstate
+                  newingredients = measurementContributionHelper scene newstate
+                  new = (newstate,newingredients)
                   accprob = --trace =<< (printf "%f") $ 
-                            acceptanceProbabilityOf mutation scene oldstate newstate
+                            acceptanceProbabilityOf mutation scene old new
               if accprob==0
-                then return oldstate
+                then return old
                 else do rnd <- uniform g
                         if rnd<=accprob
-                          then return newstate
-                          else return oldstate
+                          then return new
+                          else return old
 
-  nMLTSteps :: Scene -> MutationList -> Int -> MLTState -> Gen s -> ST s [MLTState]
-  nMLTSteps scene mutations n initialstate g
-    | n==1      = return [initialstate]
+  nMLTSteps :: Scene -> MutationList -> Int -> AugmentedState -> Gen s -> ST s [AugmentedState]
+  nMLTSteps scene mutations n initialaugmentedstate g
+    | n==1      = return [initialaugmentedstate]
     | otherwise = do
-        newpath <- metropolisStep scene mutations initialstate g
-        futureresults <- nMLTSteps scene mutations (n-1) newpath g
-        return (initialstate:futureresults)
+        newaugmentedstate <- metropolisStep scene mutations initialaugmentedstate g
+        futureresults <- nMLTSteps scene mutations (n-1) newaugmentedstate g
+        return (initialaugmentedstate:futureresults)
 
   mltActionStep :: Scene -> MutationList -> (MLTState -> a) -> Int -> (Seed,MLTState) -> ((Seed,MLTState),[a])
-  mltActionStep scene mutations extractor n (seed,initialpath) = runST $ do
+  mltActionStep scene mutations extractor n (seed,initialstate) = runST $ do
     g <- restore seed
-    states <- nMLTSteps scene
-                        mutations
-                        n
-                        initialpath
-                        g
+    let initialstateingredients = measurementContributionHelper scene initialstate
+    augmentedstates <- nMLTSteps scene
+                                 mutations
+                                 n
+                                 (initialstate, initialstateingredients)
+                                 g
     g' <- save g
+    let states = map fst augmentedstates
     return ((g',last states), map extractor states)
   
   mltAction :: Scene -> MutationList -> (MLTState -> a) -> Int -> Int -> Int -> [a]

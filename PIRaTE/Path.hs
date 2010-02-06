@@ -51,7 +51,10 @@ module PIRaTE.Path where
           sensors     = sceneSensors     scene
           interactors = sceneInteractors scene
   
-  measurementContributionHelper :: Scene -> Path -> ([Double],[Double],[Double],[Double])
+  type MCFIngredients = ([Double],[Double],[Double],[Double])
+  type AugmentedState = (MLTState, MCFIngredients)
+  
+  measurementContributionHelper :: Scene -> Path -> MCFIngredients
   measurementContributionHelper scene path = (crosssections,phasefunctions,squareddists,opticaldepths) where
     crosssections = [emissivity]++scattercrosssections++[sensitivity]
     phasefunctions = [emissionpf]++scatteringpfs++[sensationpf]
@@ -77,8 +80,8 @@ module PIRaTE.Path where
     interactors = sceneInteractors scene
     
   
-  measurementContributionQuotient :: Scene -> MLTState -> MLTState -> Double
-  measurementContributionQuotient scene oldstate newstate
+  measurementContributionQuotient :: Scene -> AugmentedState -> AugmentedState -> Double
+  measurementContributionQuotient scene (oldstate,oldingredients) (newstate,newingredients)
     | unchangedpath = 1
     | any (==0) (newcrosssections' ++ newphasefunctions') = 0
     | otherwise = nominator / denominator
@@ -102,9 +105,8 @@ module PIRaTE.Path where
           s = length . map fst . takeWhile (uncurry (==)) $ zip (reverse oldpath) (reverse newpath)
           n  = pathNodeCount oldpath
           n' = pathNodeCount newpath
-          (newcrosssections,newphasefunctions,newsquareddists,newopticaldepths) = mhelper newpath
-          (oldcrosssections,oldphasefunctions,oldsquareddists,oldopticaldepths) = mhelper oldpath
-          mhelper = measurementContributionHelper scene
+          (newcrosssections,newphasefunctions,newsquareddists,newopticaldepths) = newingredients
+          (oldcrosssections,oldphasefunctions,oldsquareddists,oldopticaldepths) = oldingredients
           newpath = mltStatePath newstate
           oldpath = mltStatePath oldstate
 
