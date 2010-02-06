@@ -162,10 +162,11 @@ module Main where
         chunksize = min 2500 n
         --sigma = 5.0
         scene = standardScene sigma --testScene
-        sessionsize = min 100000 n --n
+        sessionsize = min 12500 n --n
         sessioncount = n `div` sessionsize
         startSampleSession size seed = mltAction scene mutations3 extractor seed size (min 2500 size)
-        samples = concatMap (startSampleSession sessionsize) [1..sessioncount]
+        samplesessions = map (startSampleSession sessionsize) [1..sessioncount] `using` parList rdeepseq
+        samples = concat samplesessions
     putRadiallyBinnedPhotonCounts gridsize samples
     --putGridBinnedPhotonCounts gridsize samples
     --putPhotonList samples
