@@ -8,49 +8,62 @@ module Data.EmpiricalDiscreteDistribution (
   import PIRaTE.Sampleable
   
   data Tree a = Empty
-              | Branch (Tree a) Double Integer a (Tree a)
-              deriving Show
+              | Branch (Tree a) (Tree a) a Double Integer Double
+
+  instance (Show a) => Show (Tree a) where
+    show Empty = ""
+    show (Branch l r p pw pn nw) = "("++show l++"|"++show p++" "++show pw++" "++show pn++" "++show nw++"|"++show r++")"
 
   empty :: (Ord a) => Tree a
   empty = Empty
 
   singleton :: (Ord a) => Double -> a -> (Tree a)
-  singleton weight item = Branch Empty weight 1 item Empty
+  singleton weight item = Branch Empty Empty item weight 1 weight
   
   insert :: (Ord a) => Double -> a -> (Tree a) -> (Tree a)
-  insert weight item Empty = singleton weight item
-  insert weight item (Branch left tw n pivot right) = case itemorder of
-      EQ -> Branch left  tw' n' pivot right
-      LT -> Branch left' tw' n' pivot right
-      GT -> Branch left  tw' n' pivot right'
-    where itemorder = compare item pivot
-          tw' = tw + weight
-          n' = n + 1
-          left'  = insert weight item left
-          right' = insert weight item right
-
+  insert weight item tree = fst $ insert' weight item tree
+  
+  insert' :: (Ord a) => Double -> a -> (Tree a) -> (Tree a, Double)
+  insert' weight item Empty = (singleton weight item, weight)
+  insert' weight item (Branch l r p pw pn nw) = (updatedbranch,deltanw) where
+    (updatedbranch,deltanw) = case itemorder of
+      EQ -> (Branch l  r  p pw' pn' pnw, pdeltanw)
+      LT -> (Branch l' r  p pw  pn  lnw, ldeltanw)
+      GT -> (Branch l  r' p pw  pn  rnw, rdeltanw)
+    itemorder = compare item p
+    (l',ldeltanw) = insert' weight item l
+    (r',rdeltanw) = insert' weight item r
+    pw' = pw + pdeltanw
+    pnw = nw + pdeltanw
+    lnw = nw + ldeltanw
+    rnw = nw + rdeltanw
+    pdeltanw = (weight - pw) / (fromIntegral $ pn')
+    pn' = pn + 1
+  
   isEmpty Empty = True
   isEmpty     _ = False
   
-  isLeaf (Branch Empty _ _ _ Empty) = True
-  isLeaf                          _ = False
+  isLeaf (Branch Empty Empty _ _ _ _) = True
+  isLeaf                            _ = False
   
-  getWeight Empty = 0
-  getWeight (Branch _ w _ _ _) = w
+  getPivotWeight Empty = 0
+  getPivotWeight (Branch _ _ _ pw _ _) = pw
   
-  getItem Empty = undefined
-  getItem (Branch _ _ _ i _) = i
+  getNormWeight Empty = 0
+  getNormWeight (Branch _ _ _ _ _ nw) = nw
   
-
+  getPivot Empty = undefined
+  getPivot (Branch _ _ p _ _ _) = p
+  
   instance (Ord a) => Sampleable (Tree a) (Maybe a) where
     randomSampleFrom Empty g = return Nothing
-    randomSampleFrom tree@(Branch l w n p r) g
+    randomSampleFrom tree@(Branch l r p pw pn nw) g
       | isLeaf tree = return (Just p)
       | otherwise   = do
           u <- uniform g
-          let x = w*(u::Double)
-              wl = getWeight l
-              wr = getWeight r
+          let x = nw*(u::Double)
+              wl = getNormWeight l
+              wr = getNormWeight r
           if x<=wl
             then randomSampleFrom l g
             else do
@@ -61,20 +74,19 @@ module Data.EmpiricalDiscreteDistribution (
     
     sampleProbabilityOf Empty Nothing  = 1
     sampleProbabilityOf Empty (Just _) = 0
-    sampleProbabilityOf (Branch _ _ _ _ _) Nothing = 0
-    sampleProbabilityOf tree@(Branch l w n p r) ji@(Just i)
+    sampleProbabilityOf (Branch _ _ _ _ _ _) Nothing = 0
+    sampleProbabilityOf tree@(Branch l r p pw pn nw) ji@(Just i)
       | isLeaf tree = if i==p then 1 else 0
       | otherwise = case itemorder of
           EQ -> pivotprob
           LT -> leftprob
           GT -> rightprob
       where itemorder = compare i p
-            pivotprob = max 0 $ (w-wl-wr)/w
-            leftprob  = (wl/w) * (sampleProbabilityOf l ji)
-            rightprob = (wr/w) * (sampleProbabilityOf r ji)
-            wl = getWeight l
-            wr = getWeight r
-
+            pivotprob = pw/nw
+            leftprob  = (wl/nw) * (sampleProbabilityOf l ji)
+            rightprob = (wr/nw) * (sampleProbabilityOf r ji)
+            wl = getNormWeight l
+            wr = getNormWeight r
 
 
 
