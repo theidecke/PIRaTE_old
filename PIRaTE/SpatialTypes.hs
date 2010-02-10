@@ -26,6 +26,8 @@ module PIRaTE.SpatialTypes where
   showPath = show . map quantizeNode where
   quantizeNode (Vector3 x y z) = (round (1000*x),round (1000*y),round (1000*z))
   type MLTState = Path
+  fromPath :: Path -> MLTState
+  fromPath = id
   mltStatePath :: MLTState -> Path
   mltStatePath = id
   mltStatePathLength :: MLTState -> Int

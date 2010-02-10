@@ -2,6 +2,7 @@ module Main where
   import Data.Vector (Vector3(..),v3x,v3y)
   import qualified Data.WeighedSet as WS
   import qualified Data.List as L (intersperse,foldl')
+  import qualified Data.Map as M
   import System.Environment
   import Text.Printf
   import Control.Parallel
@@ -30,10 +31,11 @@ module Main where
       SimpleRandomPathLength(..),
       RaytracingRandomPathLength(..),
       SimpleBidirRandomPathLength(..),
-      BidirPathSub(..)
+      BidirPathSub(..),
+      getStandardBidirPathSub
     )
 
-
+  import Debug.Trace
   -- test-stuff
 
   testEntities = let cont1 = Container $ Sphere (Vector3 0.3 0 0) 0.5
@@ -139,7 +141,10 @@ module Main where
   main = do
     args <- getArgs
     --[gridsize,n] <- map read `fmap` args
-    let (gridsize,n,meankd,sigma) = (read (args!!0),read (args!!1),read (args!!2),read (args!!3))
+    let (gridsize,n,meankd,sigma) = ((read (args!!0))::Int
+                                    ,(read (args!!1))::Int
+                                    ,(read (args!!2))::Double
+                                    ,(read (args!!3))::Double)
     let mutations1 = [(Mutation $ RaytracingRandomPathLength  avgscatternodes ,  1)]
         mutations1b= [(Mutation $ SimpleBidirRandomPathLength avgscatternodes ,  1)]
         mutations2 = [(Mutation $ ExponentialImageNodeTranslation 0.1         , 10)
@@ -148,12 +153,12 @@ module Main where
                      ,(Mutation $ RaytracingRandomPathLength  avgscatternodes ,  3)
                      ,(Mutation $ NewEmissionPoint                            ,  1)
                      ]
-        mutations3 = [(Mutation $ BidirPathSub meankd                         ,  1)]
-        mutations4 = [(Mutation $ ExponentialImageNodeTranslation 0.08        , 10)
-                     ,(Mutation $ ExponentialScatteringNodeTranslation 0.1    , 10)
-                     ,(Mutation $ RaytracingRandomPathLength  avgscatternodes , 10)
-                     ,(Mutation $ SimpleBidirRandomPathLength avgscatternodes , 10)
-                     ,(Mutation $ BidirPathSub 1.0                            , 10)
+        mutations3 = [(Mutation $ (getStandardBidirPathSub meankd),  1)]
+        mutations4 = [(Mutation $ ExponentialImageNodeTranslation 0.08         , 10)
+                     ,(Mutation $ ExponentialScatteringNodeTranslation 0.1     , 10)
+                     ,(Mutation $ RaytracingRandomPathLength  avgscatternodes  , 10)
+                     ,(Mutation $ SimpleBidirRandomPathLength avgscatternodes  , 10)
+                     ,(Mutation $ (getStandardBidirPathSub 1.0)   , 10)
                      ]
         avgscatternodes = 2.0*sigma --shouldn't be less than or equal 0.0
         --meankd = 3.0
@@ -164,9 +169,12 @@ module Main where
         scene = standardScene sigma --testScene
         sessionsize = min 10000 n --n
         sessioncount = n `div` sessionsize
-        startSampleSession size seed = mltAction scene mutations3 extractor seed size (min 2500 size)
+        initmutmem = M.empty
+        startSampleSession size seed = mltAction scene mutations3 initmutmem extractor seed size (min 2500 size)
         samplesessions = map (startSampleSession sessionsize) [1..sessioncount] `using` parList rdeepseq
-        samples = concat samplesessions
+        samples = concat . map fst $ samplesessions
+        mutmems = map snd samplesessions
+    --putStrLn . showListForMathematica (\x->show x++"\n") . M.toList . last $ mutmems
     putRadiallyBinnedPhotonCounts gridsize samples
     --putGridBinnedPhotonCounts gridsize samples
     --putPhotonList samples

@@ -1,10 +1,13 @@
 {-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE FlexibleInstances #-}
 
 module Data.EmpiricalDiscreteDistribution (
-    empty,singleton,insert,randomSampleFrom,sampleProbabilityOf
+    Tree,empty,singleton,insert,randomSampleFrom,sampleProbabilityOf,hasNonzeroSamples
   ) where
+  import Data.Maybe(fromJust,isJust)
   import Statistics.RandomVariate
   import Control.Monad.ST
+  import Control.DeepSeq
   import PIRaTE.Sampleable
   
   data Tree a = Empty
@@ -12,7 +15,12 @@ module Data.EmpiricalDiscreteDistribution (
 
   instance (Show a) => Show (Tree a) where
     show Empty = ""
-    show (Branch l r p pw pn nw) = "("++show l++"|"++show p++" "++show pw++" "++show pn++" "++show nw++"|"++show r++")"
+    --show (Branch l r p pw pn nw) = "("++show p++" "++show pw++" "++show pn++" "++show nw++" L"++show l++" "++" R"++show r++")"
+    show (Branch l r p pw pn nw) = show l++" "++show p++" "++show pw++" "++show pn++" "++show nw++" "++show r
+
+  instance  (NFData a) => NFData (Tree a)  where
+    rnf Empty                   = ()
+    rnf (Branch l r p pw pn nw) = rnf (l,r,p,pw,pn,nw)
 
   empty :: (Ord a) => Tree a
   empty = Empty
@@ -20,7 +28,7 @@ module Data.EmpiricalDiscreteDistribution (
   singleton :: (Ord a) => Double -> a -> (Tree a)
   singleton weight item = Branch Empty Empty item weight 1 weight
   
-  insert :: (Ord a) => Double -> a -> (Tree a) -> (Tree a)
+  insert :: (Ord a, Show a) => Double -> a -> (Tree a) -> (Tree a)
   insert weight item tree = fst $ insert' weight item tree
   
   insert' :: (Ord a) => Double -> a -> (Tree a) -> (Tree a, Double)
@@ -46,6 +54,9 @@ module Data.EmpiricalDiscreteDistribution (
   isLeaf (Branch Empty Empty _ _ _ _) = True
   isLeaf                            _ = False
   
+  hasNonzeroSamples Empty = False
+  hasNonzeroSamples branch = (getNormWeight branch)>0
+  
   getPivotWeight Empty = 0
   getPivotWeight (Branch _ _ _ pw _ _) = pw
   
@@ -58,6 +69,7 @@ module Data.EmpiricalDiscreteDistribution (
   instance (Ord a) => Sampleable (Tree a) (Maybe a) where
     randomSampleFrom Empty g = return Nothing
     randomSampleFrom tree@(Branch l r p pw pn nw) g
+      | nw==0       = return Nothing
       | isLeaf tree = return (Just p)
       | otherwise   = do
           u <- uniform g
@@ -70,14 +82,15 @@ module Data.EmpiricalDiscreteDistribution (
               let rest = x - wl
               if rest<=wr
                 then randomSampleFrom r g
-                else return (Just p) 
+                else return (Just p)
     
     sampleProbabilityOf Empty Nothing  = 1
     sampleProbabilityOf Empty (Just _) = 0
-    sampleProbabilityOf (Branch _ _ _ _ _ _) Nothing = 0
+    sampleProbabilityOf (Branch _ _ _ _ _ nw) Nothing = if nw==0 then 1 else 0
     sampleProbabilityOf tree@(Branch l r p pw pn nw) ji@(Just i)
+      | nw==0       = 0
       | isLeaf tree = if i==p then 1 else 0
-      | otherwise = case itemorder of
+      | otherwise   = case itemorder of
           EQ -> pivotprob
           LT -> leftprob
           GT -> rightprob
@@ -87,6 +100,14 @@ module Data.EmpiricalDiscreteDistribution (
             rightprob = (wr/nw) * (sampleProbabilityOf r ji)
             wl = getNormWeight l
             wr = getNormWeight r
-
-
-
+  
+  instance (Ord a,Show a) => Sampleable (Tree a) a where
+    randomSampleFrom Empty g = return undefined
+    randomSampleFrom tree g = do
+      ma <- randomSampleFrom tree g
+      if (isJust ma)
+        then return $ fromJust ma
+        else error $ "randomSampleFrom tree failed:"++show tree
+      
+    sampleProbabilityOf Empty _ = 0
+    sampleProbabilityOf tree i = sampleProbabilityOf tree (Just i)

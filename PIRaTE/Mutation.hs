@@ -2,6 +2,7 @@
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE ParallelListComp #-}
+{-# LANGUAGE FlexibleContexts #-}
 
 module PIRaTE.Mutation where
   import Data.Vector (Vector3(..),(|*),vmag)
@@ -24,7 +25,7 @@ module PIRaTE.Mutation where
   defaultAcceptanceProbability :: Scene -> (MLTState -> MLTState -> Double) -> AugmentedState -> AugmentedState -> Double
   defaultAcceptanceProbability scene t old@(oldstate,oldingredients) new@(newstate,newingredients)
     | any (==0) [fnew_div_fold,tno] = 0
-    | otherwise = (fnew_div_fold * tno) / ton
+    | otherwise = min 1 (fnew_div_fold * tno / ton)
     where fnew_div_fold = measurementContributionQuotient scene old new
           tno = t newstate oldstate
           ton = t oldstate newstate
@@ -40,7 +41,7 @@ module PIRaTE.Mutation where
     mutateWith :: a -> Path -> Gen s -> ST s Path
   --}
   class Mutating a where
-    mutateWith              :: a -> Scene -> MLTState -> Gen s -> ST s (Maybe MLTState)
+    mutateWith              :: a -> Scene -> MLTState -> Gen s -> ST s (Maybe MLTState, Maybe MutationFeedback)
     acceptanceProbabilityOf :: a -> Scene -> AugmentedState -> AugmentedState -> Double
     
   -- define algebraic datatype which can hold all Mutations which adher to the 'Mutating' type class,
@@ -55,6 +56,8 @@ module PIRaTE.Mutation where
   instance Show Mutation where
     show (Mutation m) = show m
 
+  data MutationFeedback = SampledRIJS (Int,Int,Int,Int)
+
   -- implemented Mutations
   data NewEmissionPoint = NewEmissionPoint
   instance Show NewEmissionPoint where
@@ -63,11 +66,11 @@ module PIRaTE.Mutation where
     mutateWith NewEmissionPoint scene oldstate g = do
         maybenewemissionpoint <- randomSampleFrom (EmissionPointSampler scene) g
         if (isNothing maybenewemissionpoint)
-          then return Nothing
+          then return (Nothing,Nothing)
           else do
             let newemissionpoint = fromJust maybenewemissionpoint
                 newpath = newemissionpoint : tail oldpath
-            return . Just $ mltStateSubstitutePath oldstate newpath
+            return (Just $ mltStateSubstitutePath oldstate newpath, Nothing)
       where oldpath = mltStatePath oldstate
 
     acceptanceProbabilityOf (NewEmissionPoint) scene oldstate newstate =
@@ -83,12 +86,12 @@ module PIRaTE.Mutation where
     show (ExponentialScatteringNodeTranslation lambda) = "ExponentialScatteringNodeTranslation(" ++ (show lambda) ++ ")"
   instance Mutating ExponentialScatteringNodeTranslation where
     mutateWith (ExponentialScatteringNodeTranslation l) scene oldstate g
-      | nodecount<=3 = return Nothing
+      | nodecount<=3 = return (Nothing,Nothing)
       | otherwise = do
           rndindex <- randomIntInRange (1,nodecount-3) g
           rndtranslation <- randomSampleFrom (Exponential3DPointSampler l) g
           let newpath = mapAt rndindex (+rndtranslation) oldpath
-          return . Just $ mltStateSubstitutePath oldstate newpath
+          return (Just $ mltStateSubstitutePath oldstate newpath, Nothing)
       where nodecount = pathNodeCount oldpath
             oldpath   = mltStatePath oldstate
 
@@ -108,12 +111,12 @@ module PIRaTE.Mutation where
             dummy = if nodecount==2 then Emi else Sca
         maybenewreversetail <- randomSampleFrom (RecursivePathSampler (scene,newesensorpoint,undefined,SamplePlan [dummy])) g
         if (isNothing maybenewreversetail)
-          then return Nothing
+          then return (Nothing,Nothing)
           else do
             let nexttolastpoint = getPoint . last . fromJust $ (maybenewreversetail::(Maybe TPath))
                 newtail = [nexttolastpoint,newsensorpoint]
                 newpath = fixedpath ++ newtail
-            return . Just $ mltStateSubstitutePath oldstate newpath
+            return (Just $ mltStateSubstitutePath oldstate newpath, Nothing)
       where (fixedpath,pathtail) = splitAt (nodecount-2) oldpath
             nodecount = pathNodeCount oldpath
             oldpath = mltStatePath oldstate
@@ -149,8 +152,8 @@ module PIRaTE.Mutation where
             simplepathsampler = SimplePathSampler (scene,newpathlength)
         mnewpath <- randomSampleFrom simplepathsampler g
         if (isNothing mnewpath)
-          then return Nothing
-          else return . Just $ mltStateSubstitutePath oldstate (fromJust mnewpath)
+          then return (Nothing,Nothing)
+          else return (Just $ mltStateSubstitutePath oldstate (fromJust mnewpath), Nothing)
       where geomdist = geometricDistributionFromMean (l-1)
 
     acceptanceProbabilityOf (SimpleRandomPathLength l) scene =
@@ -175,8 +178,8 @@ module PIRaTE.Mutation where
             simplepathsampler = RaytracingPathSampler (scene,newns)
         mnewpath <- randomSampleFrom simplepathsampler g
         if (isNothing mnewpath)
-          then return Nothing
-          else return . Just $ mltStateSubstitutePath oldstate (fromJust mnewpath)
+          then return (Nothing,Nothing)
+          else return (Just $ mltStateSubstitutePath oldstate (fromJust mnewpath), Nothing)
       where geomdist = geometricDistributionFromMean ns
 
     acceptanceProbabilityOf (RaytracingRandomPathLength ns) scene =
@@ -199,8 +202,8 @@ module PIRaTE.Mutation where
         let simplepathsampler = SimpleBidirPathSampler (scene,newns)
         mnewpath <- randomSampleFrom simplepathsampler g
         if (isNothing mnewpath)
-          then return Nothing
-          else return . Just $ mltStateSubstitutePath oldstate (fromJust mnewpath)
+          then return (Nothing,Nothing)
+          else return (Just $ mltStateSubstitutePath oldstate (fromJust mnewpath), Nothing)
       where geomdist = geometricDistributionFromMean ns
 
     acceptanceProbabilityOf (SimpleBidirRandomPathLength ns) scene =
@@ -213,13 +216,23 @@ module PIRaTE.Mutation where
           newns = (pathNodeCount newpath) - 2
           newpath = mltStatePath newstate
 
-  data BidirPathSub = BidirPathSub Double
+  
+  data RIJSDist = forall s. (Sampleable s (Int,Int,Int,Int)) => RIJSDist s
+  instance Sampleable RIJSDist (Int,Int,Int,Int) where
+    randomSampleFrom    (RIJSDist dist) = randomSampleFrom dist
+    sampleProbabilityOf (RIJSDist dist) rijs = sampleProbabilityOf dist rijs
+
+  type RIJSDistFactory = Int->RIJSDist
+  data BidirPathSub = BidirPathSub RIJSDistFactory
+  
+  getStandardBidirPathSub mu = BidirPathSub $ \n-> RIJSDist . StandardRIJSDist $ (n,mu)
+  
   instance Show BidirPathSub where
-    show (BidirPathSub mu) = "BidirPathSub:("++show mu++")"
+    show (BidirPathSub _) = "BidirPathSub"
   instance Mutating BidirPathSub where
-    mutateWith (BidirPathSub mu) scene oldstate g = do
-        let rijsdist = RIJSDist (n,mu)
-        (r,i,j,s) <- randomSampleFrom rijsdist g
+    mutateWith (BidirPathSub rijsfactory) scene oldstate g = do
+        let rijsdist = rijsfactory n
+        rijs@(r,i,j,s) <- randomSampleFrom rijsdist g
         let lightstartpath  = take r oldpath
             sensorstartpath = take s (reverse oldpath)
             n' = r + i + j + s
@@ -239,23 +252,23 @@ module PIRaTE.Mutation where
             sensorsubpathsampler = RecursivePathSampler2 (scene,sensorstarteray,SamplePlan sensorsubpathplan)
         mlightsubpath <- randomSampleFrom lightsubpathsampler g
         if (isNothing mlightsubpath)
-          then return Nothing
+          then return (Nothing, Just $ SampledRIJS rijs)
           else do
             msensorsubpath <- randomSampleFrom sensorsubpathsampler g
             if (isNothing msensorsubpath)
-              then return Nothing
+              then return (Nothing, Just $ SampledRIJS rijs)
               else do
                 let lightsubpath  = fromJust (mlightsubpath::(Maybe Path))
                     sensorsubpath = fromJust (msensorsubpath::(Maybe Path))
                     newpath = lightstartpath ++ lightsubpath ++ (reverse sensorsubpath) ++ (reverse sensorstartpath)
-                return . Just $ mltStateSubstitutePath oldstate newpath
+                return (Just $ mltStateSubstitutePath oldstate newpath, Just $ SampledRIJS rijs)
       where n = pathNodeCount oldpath
             oldpath = mltStatePath oldstate
 
-    acceptanceProbabilityOf (BidirPathSub mu) scene =
-      defaultAcceptanceProbability scene (bidirPathSubTransProb scene mu)
+    acceptanceProbabilityOf (BidirPathSub rijsfactory) scene =
+      defaultAcceptanceProbability scene (bidirPathSubTransProb scene rijsfactory)
 
-  bidirPathSubTransProb scene meandeletednodes oldstate newstate
+  bidirPathSubTransProb scene rijsfactory oldstate newstate
     | unchangedpath = --mytrace $ 
                       sum $ map getRIJSProb rijss
     | otherwise     = sum [efficientProduct [getRIJSProb rijs, getSamplingProb rijs] | rijs<-rijss]
@@ -281,7 +294,7 @@ module PIRaTE.Mutation where
       lstartpath = take r newpath
       sstartpath = take s $ reverse newpath
       newpathplan = planFromNodeCount n'
-    getRIJSProb = sampleProbabilityOf (RIJSDist (n,meandeletednodes))
+    getRIJSProb = sampleProbabilityOf (rijsfactory n)
     rijss | unchangedpath = [(r,0,0,s) | r<-[1..n-1]   , s<-[n-r]]
           | otherwise     = [(r,i,j,s) | r<-[r']       , s<-[s']
                                        , i<-[0..n'-r-s], j<-[n'-r-s-i]

@@ -152,9 +152,9 @@ module PIRaTE.RandomSample where
                         k = fromIntegral k'
   
   
-  newtype RIJSDist = RIJSDist (Int,Double)
-  instance Sampleable RIJSDist (Int,Int,Int,Int) where
-    randomSampleFrom (RIJSDist (n,meankd)) g = do
+  newtype StandardRIJSDist = StandardRIJSDist (Int,Double)
+  instance Sampleable StandardRIJSDist (Int,Int,Int,Int) where
+    randomSampleFrom (StandardRIJSDist (n,meankd)) g = do
       let kddist = binomialDistributionFromNMean n meankd
       kd <- randomSampleFrom kddist g
       let ks = n - kd
@@ -176,11 +176,11 @@ module PIRaTE.RandomSample where
       i <- randomSampleFrom idist g
       let j = ka - i
       if badRIJS n (r,i,j,s)
-        then fail $ "RIJSDist: Assertion failed: n="++show n++", (r,i,j,s)="++show (r,i,j,s)
+        then fail $ "StandardRIJSDist: Assertion failed: n="++show n++", (r,i,j,s)="++show (r,i,j,s)
         else return (r,i,j,s)
       
     
-    sampleProbabilityOf (RIJSDist (n,meankd)) (r,i,j,s)
+    sampleProbabilityOf (StandardRIJSDist (n,meankd)) (r,i,j,s)
       | bad_rijs = 0
       | any (==0) probs = 0
       | otherwise = product probs
@@ -218,8 +218,8 @@ module PIRaTE.RandomSample where
     ]
     where minka = length . filter (==0) $ [r,s]
 
-  {--prop_RIJSDist_nonzeroProb :: RIJSDist -> Int -> Property
-  prop_RIJSDist_nonzeroProb rijsdist seedint = sampleprob>0
+  {--prop_StandardRIJSDist_nonzeroProb :: StandardRIJSDist -> Int -> Property
+  prop_StandardRIJSDist_nonzeroProb rijsdist seedint = sampleprob>0
     where sampleprob = sampleProbabilityOf rijsdist rijs
           rijs = runRandomSampler rijsdist seedint--}
 
