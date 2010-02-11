@@ -233,6 +233,17 @@ module PIRaTE.RandomSample where
     sampleProbabilityOf (Exponential3DPointSampler lambda) p = (exp (-r/lambda))/(4*pi*lambda*r^2)
                                                                where r = vmag p
 
+  newtype Exponential2DPointSampler = Exponential2DPointSampler Double
+  instance Sampleable Exponential2DPointSampler Point where
+    randomSampleFrom (Exponential2DPointSampler lambda) g = do
+      u <- uniform g
+      let phi = 2*pi*(u::Double)
+          rdir = Vector3 (cos phi) (sin phi) 0
+      rexp <- distributionSample (fromLambda (1/lambda)) g
+      return $ rexp |* rdir
+
+    sampleProbabilityOf (Exponential2DPointSampler lambda) p = (exp (-r/lambda))/(2*pi*lambda*r)
+                                                               where r = vmag p
 
   randomPointInUnitSphere :: Gen s -> ST s Point
   randomPointInUnitSphere g = do

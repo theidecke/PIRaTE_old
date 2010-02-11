@@ -105,7 +105,7 @@ module PIRaTE.Mutation where
     show (ExponentialImageNodeTranslation lambda) = "ExponentialImageNodeTranslation(" ++ (show lambda) ++ ")"
   instance Mutating ExponentialImageNodeTranslation where
     mutateWith (ExponentialImageNodeTranslation l) scene oldstate g = do
-        rndtranslation <- randomSampleFrom (Exponential3DPointSampler l) g
+        rndtranslation <- randomSampleFrom (Exponential2DPointSampler l) g
         let newsensorpoint = (last pathtail) + rndtranslation
             newesensorpoint = EPoint . SensationPoint $ newsensorpoint
             dummy = if nodecount==2 then Emi else Sca
@@ -133,7 +133,7 @@ module PIRaTE.Mutation where
                 newesensorpoint = EPoint $ SensationPoint newsens
                 dummy = if newnodecount==2 then Emi else Sca
                 epfactory = if newnodecount==2 then EPoint . EmissionPoint else EPoint . ScatteringPoint
-                sensprob = sampleProbabilityOf (Exponential3DPointSampler lambda) sensdelta
+                sensprob = sampleProbabilityOf (Exponential2DPointSampler lambda) sensdelta
                 sensdelta = newsens - oldsens
                 [oldntl,oldsens] = snd . splitAt (oldnodecount - 2) $ oldpath
                 [newntl,newsens] = snd . splitAt (newnodecount - 2) $ newpath
