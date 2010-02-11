@@ -50,7 +50,7 @@ module Main where
                      ent2 = Entity cont2 [mat2]
                      ent3 = Entity cont3 [mat3]
                      ent4 = Entity cont4 [mat4]
-                     sensorcontainer = Container $ fromCorners (Vector3 (-1) (-1) (-4.1)) (Vector3 1 1 (-3.9))
+                     sensorcontainer = Container $ fromCorners (Vector3 (-1) (-1) (-4.01)) (Vector3 1 1 (-3.99))
                      sensormaterial = toHomogenousSensingMaterial 1.0 (1, PhaseFunction $ fromApexAngle sensorangle, PathLength . mltStatePathLength)
                      sensorangle = 1 * arcmin
                      sensorentity = Entity sensorcontainer [sensormaterial]
@@ -69,7 +69,7 @@ module Main where
       scatteringcontainer = Container $ Sphere (Vector3 0 0 0) 1
       scatteringmaterial = toHomogenousInteractingMaterial 0 sigma (1,PhaseFunction Isotropic)
       scatteringentity = Entity scatteringcontainer [scatteringmaterial]
-      sensorcontainer = Container $ fromCorners (Vector3 (-1) (-1) (-4.1)) (Vector3 1 1 (-3.9))
+      sensorcontainer = Container $ fromCorners (Vector3 (-1) (-1) (-4.01)) (Vector3 1 1 (-3.99))
       sensormaterial = toHomogenousSensingMaterial 1.0 (1, PhaseFunction $ fromApexAngle sensorangle, PathLength . mltStatePathLength)
       sensorangle = 1 * arcmin
       sensorentity = Entity sensorcontainer [sensormaterial]
@@ -153,12 +153,12 @@ module Main where
                      ,(Mutation $ RaytracingRandomPathLength  avgscatternodes ,  3)
                      ,(Mutation $ NewEmissionPoint                            ,  1)
                      ]
-        mutations3 = [(Mutation $ (getStandardBidirPathSub meankd),  1)]
-        mutations4 = [(Mutation $ ExponentialImageNodeTranslation 0.08         , 10)
-                     ,(Mutation $ ExponentialScatteringNodeTranslation 0.1     , 10)
-                     ,(Mutation $ RaytracingRandomPathLength  avgscatternodes  , 10)
-                     ,(Mutation $ SimpleBidirRandomPathLength avgscatternodes  , 10)
-                     ,(Mutation $ (getStandardBidirPathSub 1.0)   , 10)
+        mutations3 = [(Mutation $ (getStandardBidirPathSub meankd) ,  0.5)]
+        mutations4 = [(Mutation $ ExponentialImageNodeTranslation 0.15          , 0.3)
+                     ,(Mutation $ ExponentialScatteringNodeTranslation 0.1      , 0.1)
+                     --,(Mutation $ RaytracingRandomPathLength  avgscatternodes  , 0.1)
+                     ,(Mutation $ SimpleBidirRandomPathLength avgscatternodes   , 0.1)
+                     ,(Mutation $ (getStandardBidirPathSub meankd)              , 0.5)
                      ]
         avgscatternodes = 2.0*sigma --shouldn't be less than or equal 0.0
         --meankd = 3.0
@@ -167,15 +167,15 @@ module Main where
         chunksize = min 2500 n
         --sigma = 5.0
         scene = standardScene sigma --testScene
-        sessionsize = min 10000 n --n
+        sessionsize = min 25000 n --n
         sessioncount = n `div` sessionsize
         initmutmem = M.empty
-        startSampleSession size seed = mltAction scene mutations3 initmutmem extractor seed size (min 2500 size)
+        startSampleSession size seed = mltAction scene mutations4 initmutmem extractor seed size (min 2500 size)
         samplesessions = map (startSampleSession sessionsize) [1..sessioncount] `using` parList rdeepseq
         samples = concat . map fst $ samplesessions
         mutmems = map snd samplesessions
     --putStrLn . showListForMathematica (\x->show x++"\n") . M.toList . last $ mutmems
-    putRadiallyBinnedPhotonCounts gridsize samples
-    --putGridBinnedPhotonCounts gridsize samples
+    --putRadiallyBinnedPhotonCounts gridsize samples
+    putGridBinnedPhotonCounts gridsize samples
     --putPhotonList samples
     --putPathLengthList samples
