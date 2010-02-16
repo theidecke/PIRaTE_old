@@ -56,7 +56,7 @@ module PIRaTE.Mutation where
   instance Show Mutation where
     show (Mutation m) = show m
 
-  data MutationFeedback = SampledRIJS (Int,Int,Int,Int)
+  data MutationFeedback = SampledRIJS (Int,Int,Int,Int) deriving Show
 
   -- implemented Mutations
   data NewEmissionPoint = NewEmissionPoint

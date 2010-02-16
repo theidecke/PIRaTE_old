@@ -34,7 +34,7 @@ module PIRaTE.MCMC where
       else do let newstate = fromJust maybenewstate
                   newingredients = measurementContributionHelper scene newstate
                   new = (newstate,newingredients)
-                  accprob = --trace =<< (printf "%f") $ 
+                  accprob = --trace =<< (((show mutation++"["++show mfeedback++"] : ")++). printf "%f") $ 
                             acceptanceProbabilityOf mutation scene old new
                   mutmem'accprob = updateMutationMemory (mfeedback' accprob) mutmem
               if accprob==0
@@ -56,7 +56,7 @@ module PIRaTE.MCMC where
         Nothing   -> fallbackdist n
         Just tree -> if hasNonzeroSamples tree then RIJSDist $ tree else fallbackdist n
     where fallbackdist n = RIJSDist $ StandardRIJSDist (n,meankd)
-          meankd = 5.0
+          meankd = 4.0
   --lookup :: Ord k => k -> Map k a -> Maybe a
   
   nMLTSteps :: Scene -> MutationList -> Int -> StepInfo -> Gen s -> ST s ([AugmentedState],MutationMemory)

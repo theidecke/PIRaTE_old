@@ -154,11 +154,10 @@ module Main where
                      ,(Mutation $ NewEmissionPoint                            ,  1)
                      ]
         mutations3 = [(Mutation $ (getStandardBidirPathSub meankd) ,  0.5)]
-        mutations4 = [(Mutation $ ExponentialImageNodeTranslation 0.15          , 0.3)
-                     ,(Mutation $ ExponentialScatteringNodeTranslation 0.1      , 0.1)
-                     --,(Mutation $ RaytracingRandomPathLength  avgscatternodes  , 0.1)
-                     ,(Mutation $ SimpleBidirRandomPathLength avgscatternodes   , 0.1)
-                     ,(Mutation $ (getStandardBidirPathSub meankd)              , 0.5)
+        mutations4 = [(Mutation $ ExponentialImageNodeTranslation 0.05          , 0.3)
+                     ,(Mutation $ ExponentialScatteringNodeTranslation 0.05      , 0.3)
+                     ,(Mutation $ SimpleBidirRandomPathLength avgscatternodes   , 0.3)
+                     ,(Mutation $ (getStandardBidirPathSub meankd)              , 1.0)
                      ]
         avgscatternodes = 2.0*sigma --shouldn't be less than or equal 0.0
         --meankd = 3.0
@@ -167,12 +166,12 @@ module Main where
         chunksize = min 2500 n
         --sigma = 5.0
         scene = standardScene sigma --testScene
-        sessionsize = min 25000 n --n
+        sessionsize = min 5000 n --n
         sessioncount = n `div` sessionsize
         initmutmem = M.empty
         startSampleSession size seed = mltAction scene mutations4 initmutmem extractor seed size (min 2500 size)
-        samplesessions = map (startSampleSession sessionsize) [1..sessioncount] `using` parList rdeepseq
-        samples = concat . map fst $ samplesessions
+        samplesessions = map (startSampleSession sessionsize) [1..sessioncount]
+        samples = concat (map fst samplesessions `using` parList rdeepseq)
         mutmems = map snd samplesessions
     --putStrLn . showListForMathematica (\x->show x++"\n") . M.toList . last $ mutmems
     --putRadiallyBinnedPhotonCounts gridsize samples
