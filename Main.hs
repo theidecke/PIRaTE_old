@@ -163,13 +163,14 @@ module Main where
         --meankd = 3.0
         extractor = (\v -> (v3x v, v3y v)) . last . mltStatePath
         --extractor = mltStatePathLength
-        chunksize = min 2500 n
+        getChunksize = min 100
+        chunksize = getChunksize n
         --sigma = 5.0
         scene = standardScene sigma --testScene
-        sessionsize = min 5000 n --n
+        sessionsize = min 20000 n --n
         sessioncount = n `div` sessionsize
         initmutmem = M.empty
-        startSampleSession size seed = mltAction scene mutations4 initmutmem extractor seed size (min 2500 size)
+        startSampleSession size seed = mltAction scene mutations4 initmutmem extractor seed size (getChunksize size)
         samplesessions = map (startSampleSession sessionsize) [1..sessioncount]
         samples = concat (map fst samplesessions `using` parList rdeepseq)
         mutmems = map snd samplesessions

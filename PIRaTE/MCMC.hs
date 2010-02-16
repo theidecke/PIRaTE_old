@@ -45,6 +45,7 @@ module PIRaTE.MCMC where
                           else return (old, mutmem'accprob)
   
   updateMutationMemory :: (Maybe (MutationFeedback,Double,Int)) -> MutationMemory -> MutationMemory
+  --updateMutationMemory _ mutmem = mutmem
   updateMutationMemory Nothing mutmem = mutmem
   updateMutationMemory (Just (SampledRIJS rijs,accprob,n)) mutmem = M.alter updateTree n mutmem where
     updateTree  Nothing = Just $ singleton accprob rijs
