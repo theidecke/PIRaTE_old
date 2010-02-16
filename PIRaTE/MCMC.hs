@@ -3,7 +3,7 @@ module PIRaTE.MCMC where
   import Data.Maybe
   import qualified Data.Map as M
   import Control.Monad.ST (ST,runST)
-  import Statistics.RandomVariate (Gen,Seed,initialize,save,restore,uniform)
+  import System.Random.MWC (Gen,Seed,initialize,save,restore,uniform)
   import PIRaTE.SpatialTypes
   import Data.EmpiricalDiscreteDistribution
   import PIRaTE.RandomSample (randomWeightedChoice,StandardRIJSDist(..))

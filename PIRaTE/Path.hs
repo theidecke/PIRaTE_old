@@ -11,7 +11,7 @@ module PIRaTE.Path where
   import PIRaTE.SpatialTypes
   import PIRaTE.UtilityFunctions (normsq,normalize,edgeMap)
   import PIRaTE.Sampleable
-  import Statistics.RandomVariate (Gen)
+  import System.Random.MWC (Gen)
   import Control.Monad.ST (ST)
   import PIRaTE.RandomSample (runRandomSampler,Exponential3DPointSampler(..))
   import PIRaTE.PhaseFunction.Isotropic (Isotropic(..))

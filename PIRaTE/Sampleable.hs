@@ -2,7 +2,7 @@
 
 module PIRaTE.Sampleable where
   import Control.Monad.ST (ST)
-  import Statistics.RandomVariate (Gen)
+  import System.Random.MWC (Gen)
 
   -- objects of type a from which we can draw samples of type b
   class Sampleable a b where

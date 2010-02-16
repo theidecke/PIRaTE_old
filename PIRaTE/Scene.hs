@@ -25,7 +25,7 @@ module PIRaTE.Scene where
   import PIRaTE.Sampleable
   import PIRaTE.RandomSample
   import PIRaTE.Sensor
-  import Statistics.RandomVariate (Gen,uniform,initialize)
+  import System.Random.MWC (Gen,uniform,initialize)
   import Test.QuickCheck hiding (Gen)
   import qualified Test.QuickCheck as QC (Gen)
   

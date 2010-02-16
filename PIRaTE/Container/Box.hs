@@ -3,7 +3,7 @@
 
 module PIRaTE.Container.Box where
   import Data.Vector (Vector3(..))
-  import Statistics.RandomVariate (uniform)
+  import System.Random.MWC (uniform)
   import PIRaTE.SpatialTypes
   import PIRaTE.Confineable
   import PIRaTE.Sampleable

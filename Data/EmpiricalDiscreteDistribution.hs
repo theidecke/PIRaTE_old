@@ -5,7 +5,7 @@ module Data.EmpiricalDiscreteDistribution (
     Tree,empty,singleton,insert,randomSampleFrom,sampleProbabilityOf,hasNonzeroSamples
   ) where
   import Data.Maybe(fromJust,isJust)
-  import Statistics.RandomVariate
+  import System.Random.MWC (uniform)
   import Control.Monad.ST
   import Control.DeepSeq
   import PIRaTE.Sampleable

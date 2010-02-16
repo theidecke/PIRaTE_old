@@ -5,7 +5,7 @@ module PIRaTE.PhaseFunction.Isotropic where
   import PIRaTE.SpatialTypes
   import PIRaTE.Sampleable
   import Control.Monad.ST (ST)
-  import Statistics.RandomVariate (Gen,uniform)
+  import System.Random.MWC (Gen,uniform)
   
   -- Isotropic PhaseFunction
   data Isotropic = Isotropic

@@ -5,7 +5,7 @@ module PIRaTE.PhaseFunction.ZCone where
   import PIRaTE.SpatialTypes
   import PIRaTE.Sampleable
   import Control.Monad.ST (ST)
-  import Statistics.RandomVariate (Gen,uniform)
+  import System.Random.MWC (Gen,uniform)
   
   -- PhaseFunction which scatters all incoming light into a cone around the z axis
   data ZCone = ZCone Double

@@ -8,7 +8,7 @@ module PIRaTE.Mutation where
   import Data.Vector (Vector3(..),(|*),vmag)
   import Data.Maybe (fromMaybe,isNothing,fromJust,listToMaybe)
   import qualified Data.List as L (findIndex)
-  import Statistics.RandomVariate (Gen,uniform)
+  import System.Random.MWC (Gen,uniform)
   import Control.Monad (liftM)
   import Control.Monad.ST (ST)
   import PIRaTE.SpatialTypes
