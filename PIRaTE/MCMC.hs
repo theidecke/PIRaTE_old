@@ -45,7 +45,6 @@ module PIRaTE.MCMC where
                           else return (old, mutmem'accprob)
   
   updateMutationMemory :: (Maybe (MutationFeedback,Double,Int)) -> MutationMemory -> MutationMemory
-  --updateMutationMemory _ mutmem = mutmem
   updateMutationMemory Nothing mutmem = mutmem
   updateMutationMemory (Just (SampledRIJS rijs,accprob,n)) mutmem = M.alter updateTree n mutmem where
     updateTree  Nothing = Just $ singleton accprob rijs
@@ -58,7 +57,6 @@ module PIRaTE.MCMC where
         Just tree -> if hasNonzeroSamples tree then RIJSDist $ tree else fallbackdist n
     where fallbackdist n = RIJSDist $ StandardRIJSDist (n,meankd)
           meankd = 4.0
-  --lookup :: Ord k => k -> Map k a -> Maybe a
   
   nMLTSteps :: Scene -> MutationList -> Int -> StepInfo -> Gen s -> ST s ([AugmentedState],MutationMemory)
   nMLTSteps scene mutations n stepinfo@(initialaugmentedstate,mutmem) g
