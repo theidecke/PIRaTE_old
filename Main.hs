@@ -20,7 +20,7 @@ module Main where
   import PIRaTE.Material (toHomogenousInteractingMaterial,
                           toHomogenousSensingMaterial,
                           toHomogenousEmittingMaterial)
-  import PIRaTE.Scene (Entity(..),Scene(..))
+  import PIRaTE.Scene (Entity,entityFromContainerAndMaterials,Scene(..))
   import PIRaTE.Sensor (SensorResult(..))
   import PIRaTE.MCMC (mltAction)
   import PIRaTE.Mutation (
@@ -46,17 +46,17 @@ module Main where
                      mat2 = toHomogenousInteractingMaterial  0  7 (1,PhaseFunction Isotropic)
                      mat3 = toHomogenousInteractingMaterial 40  0 (1,PhaseFunction Isotropic)
                      mat4 = toHomogenousInteractingMaterial  0 40 (1,PhaseFunction Isotropic)
-                     ent1 = Entity cont1 [mat1]
-                     ent2 = Entity cont2 [mat2]
-                     ent3 = Entity cont3 [mat3]
-                     ent4 = Entity cont4 [mat4]
+                     ent1 = entityFromContainerAndMaterials cont1 [mat1]
+                     ent2 = entityFromContainerAndMaterials cont2 [mat2]
+                     ent3 = entityFromContainerAndMaterials cont3 [mat3]
+                     ent4 = entityFromContainerAndMaterials cont4 [mat4]
                      sensorcontainer = Container $ fromCorners (Vector3 (-1) (-1) (-4.01)) (Vector3 1 1 (-3.99))
                      sensormaterial = toHomogenousSensingMaterial 1.0 (1, PhaseFunction $ fromApexAngle sensorangle, PathLength . mltStatePathLength)
                      sensorangle = 1 * arcmin
-                     sensorentity = Entity sensorcontainer [sensormaterial]
+                     sensorentity = entityFromContainerAndMaterials sensorcontainer [sensormaterial]
                      lightsourcecontainer = Container $ Sphere (Vector3 0 0 0) 0.01
                      lightsourcematerial = toHomogenousEmittingMaterial 1.0 (1, PhaseFunction Isotropic)
-                     lightsourceentity = Entity lightsourcecontainer [lightsourcematerial]
+                     lightsourceentity = entityFromContainerAndMaterials lightsourcecontainer [lightsourcematerial]
                  in [ent1,ent2,ent3,ent4,sensorentity,lightsourceentity]
 
   testRay = Ray (Vector3 0 0 0) (Direction $ normalize (Vector3 0 0 1))
@@ -65,14 +65,14 @@ module Main where
   standardScene sigma = let
       lightsourcecontainer = Container $ Sphere (Vector3 0 0 0) 0.01
       lightsourcematerial = toHomogenousEmittingMaterial 1.0 (1, PhaseFunction $ Isotropic)
-      lightsourceentity = Entity lightsourcecontainer [lightsourcematerial]
+      lightsourceentity = entityFromContainerAndMaterials lightsourcecontainer [lightsourcematerial]
       scatteringcontainer = Container $ Sphere (Vector3 0 0 0) 1
       scatteringmaterial = toHomogenousInteractingMaterial 0 sigma (1,PhaseFunction Isotropic)
-      scatteringentity = Entity scatteringcontainer [scatteringmaterial]
+      scatteringentity = entityFromContainerAndMaterials scatteringcontainer [scatteringmaterial]
       sensorcontainer = Container $ fromCorners (Vector3 (-1) (-1) (-4.01)) (Vector3 1 1 (-3.99))
       sensormaterial = toHomogenousSensingMaterial 1.0 (1, PhaseFunction $ fromApexAngle sensorangle, PathLength . mltStatePathLength)
       sensorangle = 1 * arcmin
-      sensorentity = Entity sensorcontainer [sensormaterial]
+      sensorentity = entityFromContainerAndMaterials sensorcontainer [sensormaterial]
       entities = [lightsourceentity, scatteringentity,sensorentity]
     in Scene entities
   

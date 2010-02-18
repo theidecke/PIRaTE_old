@@ -36,7 +36,10 @@ module PIRaTE.Scene where
       entityContainer::Container,
       entityMaterials::[Material]
     }
-    
+  
+  entityFromContainerAndMaterials :: Container -> [Material] -> Entity
+  entityFromContainerAndMaterials container materials = Entity container materials
+  
   instance Show Entity where
     show (Entity container materials) = "Entity contained by a " ++ (show container) ++
                                         " filled with " ++ (show materials)
@@ -124,14 +127,14 @@ module PIRaTE.Scene where
       standardScene sigma = let
           lightsourcecontainer = Container $ Sphere (Vector3 0 0 0) 0.01
           lightsourcematerial = toHomogenousEmittingMaterial 1.0 (1, PhaseFunction $ Isotropic)
-          lightsourceentity = Entity lightsourcecontainer [lightsourcematerial]
+          lightsourceentity = entityFromContainerAndMaterials lightsourcecontainer [lightsourcematerial]
           scatteringcontainer = Container $ Sphere (Vector3 0 0 0) 1
           scatteringmaterial = toHomogenousInteractingMaterial 0 sigma (1,PhaseFunction Isotropic)
-          scatteringentity = Entity scatteringcontainer [scatteringmaterial]
+          scatteringentity = entityFromContainerAndMaterials scatteringcontainer [scatteringmaterial]
           sensorcontainer = Container $ Sphere (Vector3 0 0 (-3)) 1.1
           sensormaterial = toHomogenousSensingMaterial 1.0 (1, PhaseFunction $ fromApexAngle sensorangle, PathLength . mltStatePathLength)
           sensorangle = 1 * degree
-          sensorentity = Entity sensorcontainer [sensormaterial]
+          sensorentity = entityFromContainerAndMaterials sensorcontainer [sensormaterial]
           entities = [lightsourceentity, scatteringentity,sensorentity]
         in Scene entities
 
