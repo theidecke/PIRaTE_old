@@ -58,29 +58,34 @@ module PIRaTE.Material (
     Material kappatex sigmatex pftex mempty mempty mempty mempty
     where kappatex = Homogenous kappa
           sigmatex = Homogenous sigma
-          pftex = WS.singleton ipftex
+          pftex | sigma==0  = WS.empty
+                | otherwise = WS.singleton ipftex
           ipftex = IndexedPhaseFunction ipf
 
   toHomogenousEmittingMaterial :: Double -> (Int,PhaseFunction) -> Material
   toHomogenousEmittingMaterial epsilon ipf@(index,pf) =
     Material mempty mempty mempty epsilontex pftex mempty mempty
     where epsilontex = Homogenous epsilon
-          pftex = WS.singleton ipftex
+          pftex | epsilon==0 = WS.empty
+                | otherwise  = WS.singleton ipftex
           ipftex = IndexedPhaseFunction ipf
           
   toHomogenousSensingMaterial :: Double -> (Int,PhaseFunction,SensorLogger) -> Material
   toHomogenousSensingMaterial zeta ist@(index,pf,sl) =
     Material mempty mempty mempty mempty mempty zetatex wsens
     where zetatex = Homogenous zeta
-          wsens = WS.singleton indexedsensor
+          wsens | zeta==0   = WS.empty
+                | otherwise = WS.singleton indexedsensor
           indexedsensor = IndexedSensor ist -- indexed sensor triple
 
   instance Show Material where
-    show m =  "kappa="    ++ show (materialAbsorption m) ++
-              ", sigma="  ++ show (materialScattering m) ++
-              ", phi="    ++ show (materialScatteringPhaseFunction m) ++
-              ", epsilon="++ show (materialEmissivity m) ++
-              ", zeta="   ++ show (materialSensitivity m)
+    show m =  "kappa="     ++ show (materialAbsorption m) ++
+              ", sigma="   ++ show (materialScattering m) ++
+              ", phi_sca=" ++ show (materialScatteringPhaseFunction m) ++
+              ", epsilon=" ++ show (materialEmissivity m) ++
+              ", phi_emi=" ++ show (materialEmissionDirectedness m) ++
+              ", zeta="    ++ show (materialSensitivity m) ++
+              ", phi_sen=" ++ show (materialSensor m)
 
   instance Monoid Double where
     mempty = 0
@@ -98,7 +103,7 @@ module PIRaTE.Material (
                        (Material kappa2 sigma2 scawpf2 epsilon2 emiwpf2 zeta2 senwpf2) =
     let kappa'   = kappa1 `mappend` kappa2
         sigma'   = sigma1 `mappend` sigma2
-        scawpf'  = scawpf1 `mappend` scawpf1
+        scawpf'  = scawpf1 `mappend` scawpf2
         epsilon' = epsilon1 `mappend` epsilon2
         emiwpf'  = emiwpf1 `mappend` emiwpf2
         zeta'    = zeta1 `mappend` zeta2
