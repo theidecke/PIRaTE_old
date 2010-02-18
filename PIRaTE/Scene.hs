@@ -161,10 +161,10 @@ module PIRaTE.Scene where
     {-# INLINE (<=) #-}
     
   
-  fromInterval :: Interval -> a -> [IntervalLimiter a]
-  fromInterval (start,end) key = [IntervalLimiter key  True start,
-                                  IntervalLimiter key False   end]
-  {-# INLINE fromInterval #-}
+  fromKeyInterval :: a -> Interval -> [IntervalLimiter a]
+  fromKeyInterval key (start,end) = [IntervalLimiter key  True start,
+                                     IntervalLimiter key False   end]
+  {-# INLINE fromKeyInterval #-}
                                   
   -- transforms a list of tagged intervals possibly overlapping and with coinciding
   -- endpoints into a list of disjoint intervals with taglist
@@ -174,16 +174,13 @@ module PIRaTE.Scene where
           cutOverlaps' :: (Ord a) => (S.Set a) -> [IntervalLimiter a] -> [(Interval, S.Set a)]
           cutOverlaps' active         [] = []
           cutOverlaps' active (l1:l2:ls)
-            | l1==l2    = rest
+            | S.null newactive || l1==l2 = rest
             | otherwise = ((intervalLimiterPosition l1,
                             intervalLimiterPosition l2), newactive):rest
-            where getNewActive (IntervalLimiter key isbegin _)
-                    | isbegin   = S.insert key active
-                    | otherwise = S.delete key active
-                  --getNewActive (IntervalLimiter key isbegin _) =
-                  --  (if isbegin then S.insert else S.delete) key active
-                  newactive = getNewActive l1
+            where newactive = getNewActive l1
                   rest = cutOverlaps' newactive (l2:ls)
+                  getNewActive (IntervalLimiter key isbegin _) =
+                    (if isbegin then S.insert else S.delete) key active
           cutOverlaps' active ((IntervalLimiter _ isbegin _):[]) =
             if isbegin then error "last intervallimiter shouldn't be a begin" else []  
   
@@ -199,20 +196,30 @@ module PIRaTE.Scene where
 
 
   disjunctIntervalsWithCondensedMaterials :: [Entity] -> Ray -> [(Interval,Material)]
-  disjunctIntervalsWithCondensedMaterials entities ray = let
-      intervals = [entityContainer entity `intersectedBy` ray | entity<-entities]
-      entityindices = [(0::Int)..(length entities -1)]
-      nestedindexedintervals = zip intervals entityindices
-      indexedintervals = concat [map (\x -> (x, snd ii)) (fst ii) | ii<-nestedindexedintervals]
-      taggeddisjointintervals = cutOverlaps.concat $ map (uncurry fromInterval) indexedintervals
-      intervalmaterialindices = map (S.toList . snd) taggeddisjointintervals
-      entitymateriallists = map entityMaterials entities
-      intervalmaterials = [concatMap (entitymateriallists!!) materialindices | materialindices<-intervalmaterialindices]
-      condensedintervalmaterials = map mconcat intervalmaterials
+  disjunctIntervalsWithCondensedMaterials entities ray =
+    zip disjointintervals condensedintervalmaterials
+    where
       disjointintervals = fst $ unzip taggeddisjointintervals
-      refinedintervalswithmaterials = zip disjointintervals condensedintervalmaterials
-    in refinedintervalswithmaterials
-    
+      condensedintervalmaterials = getCondensedIntervalMaterials entities taggeddisjointintervals
+      taggeddisjointintervals    = getTaggedDisjointIntervals entities ray      
+
+  -- | returns a list of pairs of disjoint intervals with a set of entityindices which are contained in the interval
+  getTaggedDisjointIntervals :: [Entity] -> Ray -> [(Interval, S.Set Int)]
+  getTaggedDisjointIntervals entities ray =
+    cutOverlaps . concat $ concatMap distributeEntityTag nestedindexedintervals
+    where
+      distributeEntityTag (entityindex, intervals) = map (fromKeyInterval entityindex) intervals
+      nestedindexedintervals = zip [(0::Int)..] entityintersections
+      entityintersections = [entityContainer entity `intersectedBy` ray | entity<-entities]
+
+  -- | returns in listform for every disjoint interval the sum of materials of all entities present in the interval
+  getCondensedIntervalMaterials :: [Entity] -> [(Interval, S.Set Int)] -> [Material]
+  getCondensedIntervalMaterials entities taggeddisjointintervals =
+    map mconcat intervalmaterials
+    where
+      intervalmaterials = [concat (map (entitymateriallists!!) matindexset) | matindexset <- intervalmaterialindexsets]
+      intervalmaterialindexsets = map (S.toList . snd) taggeddisjointintervals
+      entitymateriallists = map entityMaterials entities
 
   -- sort out intervals that are before the ray starts or further away than maxDist
   -- and clip intervals that span across these bounds
