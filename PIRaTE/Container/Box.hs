@@ -20,7 +20,7 @@ module PIRaTE.Container.Box where
 
   instance Show Box where
     show (Box c1 c2) = "Box spanned between " ++ (showVector3 c1) ++
-                       " and " ++ (showVector3 c1)
+                       " and " ++ (showVector3 c2)
 
   instance Confineable Box where
     contains (Box (Vector3 x1 y1 z1) (Vector3 x2 y2 z2)) (Vector3 x y z) =

@@ -42,20 +42,23 @@ module Main where
                      cont2 = Container $ Sphere (Vector3 (-0.5) 0 0) 0.3
                      cont3 = Container $ Sphere (Vector3 0.2 0.1 (-0.15)) 0.1
                      cont4 = Container $ Sphere (Vector3 (-0.35) (-0.7) 0.0) 0.25
-                     mat1 = toHomogenousInteractingMaterial  3  4 (1,PhaseFunction Isotropic)
-                     mat2 = toHomogenousInteractingMaterial  0  7 (1,PhaseFunction Isotropic)
-                     mat3 = toHomogenousInteractingMaterial 40  0 (1,PhaseFunction Isotropic)
-                     mat4 = toHomogenousInteractingMaterial  0 40 (1,PhaseFunction Isotropic)
+                     emissionphasefunction   = (1,PhaseFunction Isotropic)
+                     scatteringphasefunction = (1,PhaseFunction Isotropic)
+                     sensationphasefunction  = (1,PhaseFunction $ fromApexAngle sensorangle, PathLength . mltStatePathLength)
+                     mat1 = toHomogenousInteractingMaterial  3  4 scatteringphasefunction
+                     mat2 = toHomogenousInteractingMaterial  0  7 scatteringphasefunction
+                     mat3 = toHomogenousInteractingMaterial 40  0 scatteringphasefunction
+                     mat4 = toHomogenousInteractingMaterial  0 40 scatteringphasefunction
                      ent1 = entityFromContainerAndMaterials cont1 [mat1]
                      ent2 = entityFromContainerAndMaterials cont2 [mat2]
                      ent3 = entityFromContainerAndMaterials cont3 [mat3]
                      ent4 = entityFromContainerAndMaterials cont4 [mat4]
                      sensorcontainer = Container $ fromCorners (Vector3 (-1) (-1) (-4.01)) (Vector3 1 1 (-3.99))
-                     sensormaterial = toHomogenousSensingMaterial 1.0 (1, PhaseFunction $ fromApexAngle sensorangle, PathLength . mltStatePathLength)
+                     sensormaterial = toHomogenousSensingMaterial 1.0 sensationphasefunction
                      sensorangle = 1 * arcmin
                      sensorentity = entityFromContainerAndMaterials sensorcontainer [sensormaterial]
                      lightsourcecontainer = Container $ Sphere (Vector3 0 0 0) 0.01
-                     lightsourcematerial = toHomogenousEmittingMaterial 1.0 (1, PhaseFunction Isotropic)
+                     lightsourcematerial = toHomogenousEmittingMaterial 1.0 emissionphasefunction
                      lightsourceentity = entityFromContainerAndMaterials lightsourcecontainer [lightsourcematerial]
                  in [ent1,ent2,ent3,ent4,sensorentity,lightsourceentity]
 
@@ -63,14 +66,17 @@ module Main where
   testScene = Scene testEntities
   
   standardScene sigma = let
+      emissionphasefunction   = (1,PhaseFunction Isotropic)
+      scatteringphasefunction = (1,PhaseFunction Isotropic)
+      sensationphasefunction  = (1,PhaseFunction $ fromApexAngle sensorangle, PathLength . mltStatePathLength)
       lightsourcecontainer = Container $ Sphere (Vector3 0 0 0) 0.01
-      lightsourcematerial = toHomogenousEmittingMaterial 1.0 (1, PhaseFunction $ Isotropic)
+      lightsourcematerial = toHomogenousEmittingMaterial 1.0 emissionphasefunction
       lightsourceentity = entityFromContainerAndMaterials lightsourcecontainer [lightsourcematerial]
       scatteringcontainer = Container $ Sphere (Vector3 0 0 0) 1
-      scatteringmaterial = toHomogenousInteractingMaterial 0 sigma (1,PhaseFunction Isotropic)
+      scatteringmaterial = toHomogenousInteractingMaterial 0 sigma scatteringphasefunction
       scatteringentity = entityFromContainerAndMaterials scatteringcontainer [scatteringmaterial]
       sensorcontainer = Container $ fromCorners (Vector3 (-1) (-1) (-4.01)) (Vector3 1 1 (-3.99))
-      sensormaterial = toHomogenousSensingMaterial 1.0 (1, PhaseFunction $ fromApexAngle sensorangle, PathLength . mltStatePathLength)
+      sensormaterial = toHomogenousSensingMaterial 1.0 sensationphasefunction
       sensorangle = 1 * arcmin
       sensorentity = entityFromContainerAndMaterials sensorcontainer [sensormaterial]
       entities = [lightsourceentity, scatteringentity,sensorentity]
@@ -166,7 +172,8 @@ module Main where
         getChunksize = min 100
         chunksize = getChunksize n
         --sigma = 5.0
-        scene = standardScene sigma --testScene
+        scene = standardScene sigma
+        --scene = testScene
         sessionsize = min 20000 n --n
         sessioncount = n `div` sessionsize
         initmutmem = M.empty
