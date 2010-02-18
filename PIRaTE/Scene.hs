@@ -246,10 +246,13 @@ module PIRaTE.Scene where
   -- casts a Ray through a list of entities until either a maximum optical depth
   -- or a maximum distance is reached
   probePropertyOfEntitiesWithRay :: (Material -> Texture Double) -> [Entity] -> Ray -> Double -> Double -> ProbeResult
-  probePropertyOfEntitiesWithRay propertyof entities ray maxDist maxDepth = let
+  probePropertyOfEntitiesWithRay propertyof entities ray maxDist maxDepth =
+    probePropertyOfEntitiesWithRayClosure propertyof entities ray (maxDist,maxDepth)
+
+  probePropertyOfEntitiesWithRayClosure :: (Material -> Texture Double) -> [Entity] -> Ray -> ((Double,Double) -> ProbeResult)
+  probePropertyOfEntitiesWithRayClosure propertyof entities ray = let
       refinedintervalswithtextures = disjunctIntervalsWithCondensedMaterials entities ray
-      clippedintervals = clipAndFilterIntervalsWithMaterial maxDist refinedintervalswithtextures
-    in consumeIntervals propertyof ray maxDepth 0 clippedintervals
+    in \(maxDist,maxDepth) -> (consumeIntervals propertyof ray maxDepth 0 (clipAndFilterIntervalsWithMaterial maxDist refinedintervalswithtextures))
   
   depthOfBetween :: (Material -> Texture Double) -> [Entity] -> Point -> Point -> Double
   depthOfBetween propertyof entities v w = let
@@ -257,9 +260,6 @@ module PIRaTE.Scene where
       ray = Ray v (Direction $ (1/distance)|*(w-v))
       proberesult = probePropertyOfEntitiesWithRay propertyof entities ray distance infinity
     in fromJust $ getProbeResultDepth proberesult
-
-  probeExtinctionWithRay :: [Entity] -> Ray -> Double -> Double -> ProbeResult
-  probeExtinctionWithRay = probePropertyOfEntitiesWithRay materialExtinction
 
   opticalDepthBetween :: [Entity] -> Point -> Point -> Double
   opticalDepthBetween = depthOfBetween materialExtinction
@@ -623,12 +623,12 @@ module PIRaTE.Scene where
       | otherwise = do u1 <- uniform g
                        let absorptionatinfinity = (1 - (exp (-totaldepth)))
                            randomdepth = negate $ log (1 - absorptionatinfinity * (u1::Double))
-                           proberesult = probeToInfinity randomdepth
+                           proberesult = probeMedia (infinity, randomdepth)
                            distance = getProbeResultDist proberesult
                        return distance
       where totaldepth = fromJust $ getProbeResultDepth totaldepthproberesult
-            totaldepthproberesult = probeToInfinity infinity
-            probeToInfinity = probePropertyOfEntitiesWithRay materialproperty entities ray infinity
+            totaldepthproberesult = probeMedia (infinity, infinity)
+            probeMedia = probePropertyOfEntitiesWithRayClosure materialproperty entities ray
 
     sampleProbabilityOf (UniformAttenuation2Sampleable (entities,
                                                         materialproperty,
@@ -640,9 +640,9 @@ module PIRaTE.Scene where
         where absorptionatinfinity = (1 - (exp (-totaldepth)))
               endpointvalue = propertyAt materialproperty entities endpoint
               endpoint = origin + distance |* direction
-              endpointdepth = fromJust . getProbeResultDepth $ probeMedia distance infinity
-              totaldepth    = fromJust . getProbeResultDepth $ probeMedia infinity infinity
-              probeMedia = probePropertyOfEntitiesWithRay materialproperty entities ray
+              endpointdepth = fromJust . getProbeResultDepth $ probeMedia (distance, infinity)
+              totaldepth    = fromJust . getProbeResultDepth $ probeMedia (infinity, infinity)
+              probeMedia = probePropertyOfEntitiesWithRayClosure materialproperty entities ray
     sampleProbabilityOf _ Nothing = samplingNothingError "UniformAttenuation2Sampleable"
 
   newtype UniformDepthDistanceSampleable = UniformDepthDistanceSampleable DistanceSamplerParameters
@@ -651,11 +651,11 @@ module PIRaTE.Scene where
       | totaldepth==0 = return Nothing
       | otherwise = do u1 <- uniform g
                        let randomdepth = totaldepth * (u1::Double)
-                           proberesult = probeToInfinity randomdepth
+                           proberesult = probeMedia (infinity, randomdepth)
                        return (getProbeResultDist proberesult)
       where totaldepth = fromJust $ getProbeResultDepth totaldepthproberesult
-            totaldepthproberesult = probeToInfinity infinity
-            probeToInfinity = probePropertyOfEntitiesWithRay materialproperty entities ray infinity
+            totaldepthproberesult = probeMedia (infinity, infinity)
+            probeMedia = probePropertyOfEntitiesWithRayClosure materialproperty entities ray
 
     sampleProbabilityOf (UniformDepthDistanceSampleable (entities,
                                                          materialproperty,
