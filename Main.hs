@@ -20,7 +20,7 @@ module Main where
   import PIRaTE.Material (toHomogenousInteractingMaterial,
                           toHomogenousSensingMaterial,
                           toHomogenousEmittingMaterial)
-  import PIRaTE.Scene (Entity,entityFromContainerAndMaterials,Scene(..))
+  import PIRaTE.Scene (Entity,entityFromContainerAndMaterials,Scene,sceneFromEntities)
   import PIRaTE.Sensor (SensorResult(..))
   import PIRaTE.MCMC (mltAction)
   import PIRaTE.Mutation (
@@ -63,7 +63,7 @@ module Main where
                  in [ent1,ent2,ent3,ent4,sensorentity,lightsourceentity]
 
   testRay = Ray (Vector3 0 0 0) (Direction $ normalize (Vector3 0 0 1))
-  testScene = Scene testEntities
+  testScene = sceneFromEntities testEntities
   
   standardScene sigma = let
       emissionphasefunction   = (1,PhaseFunction Isotropic)
@@ -80,7 +80,7 @@ module Main where
       sensorangle = 1 * arcmin
       sensorentity = entityFromContainerAndMaterials sensorcontainer [sensormaterial]
       entities = [lightsourceentity, scatteringentity,sensorentity]
-    in Scene entities
+    in sceneFromEntities entities
   
   
   showSample (x,y) = printf "{%f,%f}" x y

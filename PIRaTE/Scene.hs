@@ -103,25 +103,24 @@ module PIRaTE.Scene where
   {-# INLINE sensitivityAt #-}
 
   -- a Scene contains all entities
+  sceneFromEntities entities = Scene {
+    sceneEntities    = entities,
+    sceneEmitters    = filter isEmitter entities,
+    sceneInteractors = filter isInteractor entities,
+    sceneScatterers  = filter isScatterer entities,
+    sceneAbsorbers   = filter isAbsorber entities,
+    sceneSensors     = filter isSensor entities
+  }
+  
   data Scene = Scene {
-      sceneEntities::[Entity]
+      sceneEntities::[Entity],
+      sceneEmitters::[Entity],
+      sceneInteractors::[Entity],
+      sceneScatterers::[Entity],
+      sceneAbsorbers::[Entity],
+      sceneSensors::[Entity]
     } deriving Show
 
-  sceneEmitters :: Scene -> [Entity]
-  sceneEmitters = filter isEmitter . sceneEntities
-  
-  sceneInteractors :: Scene -> [Entity]
-  sceneInteractors = filter isInteractor . sceneEntities
-  
-  sceneScatterers :: Scene -> [Entity]
-  sceneScatterers = filter isScatterer . sceneEntities
-  
-  sceneAbsorbers :: Scene -> [Entity]
-  sceneAbsorbers = filter isAbsorber . sceneEntities
-
-  sceneSensors :: Scene -> [Entity]
-  sceneSensors = filter isSensor . sceneEntities
-  
   instance Arbitrary Scene where
     arbitrary = (standardScene . abs) `fmap` arbitrary where
       standardScene sigma = let
@@ -136,7 +135,7 @@ module PIRaTE.Scene where
           sensorangle = 1 * degree
           sensorentity = entityFromContainerAndMaterials sensorcontainer [sensormaterial]
           entities = [lightsourceentity, scatteringentity,sensorentity]
-        in Scene entities
+        in sceneFromEntities entities
 
   -- pick a sensor in the scene, choose a point in the sensor and a direction TODO
   --instance Sampleable Scene SensorRay where
