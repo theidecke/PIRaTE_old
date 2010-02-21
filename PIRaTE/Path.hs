@@ -30,15 +30,15 @@ module PIRaTE.Path where
     | any (==0) pointfactors = 0
     | otherwise = (product pointfactors) * exp (-opticaldepth) / geometricfactors
     where pointfactors = [emissivity,emissionpf,sensitivity,sensationpf] ++ scattercrosssections ++ scatteringpfs
-          emissivity  = emitters `emissivityAt` emissionpoint
-          sensitivity = sensors `sensitivityAt` sensationpoint
-          scattercrosssections = map (scatterers `scatteringAt`) scatterpoints
+          emissivity  = scene `emissivityAt` emissionpoint
+          sensitivity = scene `sensitivityAt` sensationpoint
+          scattercrosssections = map (scene `scatteringAt`) scatterpoints
           emissionpf  = sampleProbabilityOf (EmissionDirectionSampler  (scene,  emissionpoint)) (Just  emissiondir)
           sensationpf = sampleProbabilityOf (SensationDirectionSampler (scene, sensationpoint)) (Just sensationdir)
           scatteringpfs = [sampleProbabilityOf (ScatteringDirectionSampler (scene,p,win)) (Just wout)
                            | p <- scatterpoints
                            | (win,wout) <- scatterdirpairs]
-          opticaldepth = sum $ edgeMap (opticalDepthBetween interactors) path
+          opticaldepth = sum $ edgeMap (opticalDepthBetween scene) path
           geometricfactors = product . map normsq $ edges
           (emissionpoint,scatterpoints,sensationpoint) = trisect path
           emissiondir = head directions
@@ -46,10 +46,6 @@ module PIRaTE.Path where
           scatterdirpairs = edgeMap (,) directions
           directions = map fromEdge edges
           edges = edgeMap (\u v -> v-u) path
-          emitters    = sceneEmitters    scene
-          scatterers  = sceneScatterers  scene
-          sensors     = sceneSensors     scene
-          interactors = sceneInteractors scene
   
   type MCFIngredients = ([Double],[Double],[Double],[Double])
   type AugmentedState = (MLTState, MCFIngredients)
@@ -59,10 +55,10 @@ module PIRaTE.Path where
     crosssections = [emissivity]++scattercrosssections++[sensitivity]
     phasefunctions = [emissionpf]++scatteringpfs++[sensationpf]
     squareddists = map normsq edges
-    opticaldepths = edgeMap (opticalDepthBetween interactors) path
-    emissivity  = emitters `emissivityAt` emissionpoint
-    sensitivity = sensors `sensitivityAt` sensationpoint
-    scattercrosssections = map (scatterers `scatteringAt`) scatterpoints
+    opticaldepths = edgeMap (opticalDepthBetween scene) path
+    emissivity  = scene `emissivityAt` emissionpoint
+    sensitivity = scene `sensitivityAt` sensationpoint
+    scattercrosssections = map (scene `scatteringAt`) scatterpoints
     emissionpf  = sampleProbabilityOf (EmissionDirectionSampler  (scene,  emissionpoint)) (Just  emissiondir)
     sensationpf = sampleProbabilityOf (SensationDirectionSampler (scene, sensationpoint)) (Just sensationdir)
     scatteringpfs = [sampleProbabilityOf (ScatteringDirectionSampler (scene,p,win)) (Just wout)
@@ -74,10 +70,6 @@ module PIRaTE.Path where
     scatterdirpairs = edgeMap (,) directions
     directions = map fromEdge edges
     edges = edgeMap (\u v -> v-u) path
-    emitters    = sceneEmitters    scene
-    scatterers  = sceneScatterers  scene
-    sensors     = sceneSensors     scene
-    interactors = sceneInteractors scene
     
   
   measurementContributionQuotient :: Scene -> AugmentedState -> AugmentedState -> Double

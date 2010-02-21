@@ -28,11 +28,11 @@ module PIRaTE.Material (
   data Material = Material {
         materialAbsorption              :: Texture Double,
         materialScattering              :: Texture Double,
-        materialScatteringPhaseFunction :: WeightedPhaseFunction,
+        materialScatteringPhaseFunction :: IndexedPhaseFunction,
         materialEmissivity              :: Texture Double,
-        materialEmissionDirectedness    :: WeightedPhaseFunction,
+        materialEmissionDirectedness    :: IndexedPhaseFunction,
         materialSensitivity             :: Texture Double,
-        materialSensor                  :: WeightedSensor
+        materialSensor                  :: IndexedSensor
     }
 
   materialExtinction :: Material -> Texture Double
@@ -55,37 +55,46 @@ module PIRaTE.Material (
 
   toHomogenousInteractingMaterial :: Double -> Double -> (Int,PhaseFunction) -> Material
   toHomogenousInteractingMaterial kappa sigma ipf@(index,pf) =
-    Material kappatex sigmatex pftex mempty mempty mempty mempty
+    Material kappatex sigmatex pftex mempty undefined mempty undefined
     where kappatex = Homogenous kappa
           sigmatex = Homogenous sigma
-          pftex | sigma==0  = WS.empty
-                | otherwise = WS.singleton ipftex
+          pftex | sigma==0  = undefined
+                | otherwise = ipftex
           ipftex = IndexedPhaseFunction ipf
 
   toHomogenousEmittingMaterial :: Double -> (Int,PhaseFunction) -> Material
   toHomogenousEmittingMaterial epsilon ipf@(index,pf) =
-    Material mempty mempty mempty epsilontex pftex mempty mempty
+    Material mempty mempty undefined epsilontex pftex mempty undefined
     where epsilontex = Homogenous epsilon
-          pftex | epsilon==0 = WS.empty
-                | otherwise  = WS.singleton ipftex
+          pftex | epsilon==0 = undefined
+                | otherwise  = ipftex
           ipftex = IndexedPhaseFunction ipf
           
   toHomogenousSensingMaterial :: Double -> (Int,PhaseFunction,SensorLogger) -> Material
   toHomogenousSensingMaterial zeta ist@(index,pf,sl) =
-    Material mempty mempty mempty mempty mempty zetatex wsens
+    Material mempty mempty undefined mempty undefined zetatex wsens
     where zetatex = Homogenous zeta
-          wsens | zeta==0   = WS.empty
-                | otherwise = WS.singleton indexedsensor
+          wsens | zeta==0   = undefined
+                | otherwise = indexedsensor
           indexedsensor = IndexedSensor ist -- indexed sensor triple
 
   instance Show Material where
     show m =  "kappa="     ++ show (materialAbsorption m) ++
-              ", sigma="   ++ show (materialScattering m) ++
-              ", phi_sca=" ++ show (materialScatteringPhaseFunction m) ++
-              ", epsilon=" ++ show (materialEmissivity m) ++
-              ", phi_emi=" ++ show (materialEmissionDirectedness m) ++
-              ", zeta="    ++ show (materialSensitivity m) ++
-              ", phi_sen=" ++ show (materialSensor m)
+              ", sigma="   ++ show sigma ++
+              ", phi_sca=" ++ pfscastring ++
+              ", epsilon=" ++ show epsilon ++
+              ", phi_emi=" ++ pfemistring ++
+              ", zeta="    ++ show zeta ++
+              ", phi_sen=" ++ pfsenstring where
+                sigma = (materialScattering m)
+                epsilon = (materialEmissivity m)
+                zeta = (materialSensitivity m)
+                pfscastring | isScattering m = show (materialScatteringPhaseFunction m)
+                            | otherwise      = "undefined"
+                pfemistring | isEmitting m   = show (materialEmissionDirectedness m)
+                            | otherwise      = "undefined"
+                pfsenstring | isSensing m    = show (materialSensor m)
+                            | otherwise      = "undefined"
 
   instance Monoid Double where
     mempty = 0
@@ -93,20 +102,3 @@ module PIRaTE.Material (
     mappend = (+)
     {-# INLINE mappend #-}
 
-  instance Monoid Material where
-    mempty = Material mempty mempty mempty mempty mempty mempty mempty
-    {-# INLINE mempty #-}
-    mappend = addTexturedMaterials
-    {-# INLINE mappend #-}
-
-  addTexturedMaterials (Material kappa1 sigma1 scawpf1 epsilon1 emiwpf1 zeta1 senwpf1)
-                       (Material kappa2 sigma2 scawpf2 epsilon2 emiwpf2 zeta2 senwpf2) =
-    let kappa'   = kappa1 `mappend` kappa2
-        sigma'   = sigma1 `mappend` sigma2
-        scawpf'  = scawpf1 `mappend` scawpf2
-        epsilon' = epsilon1 `mappend` epsilon2
-        emiwpf'  = emiwpf1 `mappend` emiwpf2
-        zeta'    = zeta1 `mappend` zeta2
-        senwpf'  = senwpf1 `mappend` senwpf2
-    in Material kappa' sigma' scawpf' epsilon' emiwpf' zeta' senwpf'
-  {-# INLINE addTexturedMaterials #-}

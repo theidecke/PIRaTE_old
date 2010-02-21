@@ -10,6 +10,7 @@ module PIRaTE.Scene where
   import Data.Array.Vector (singletonU)
   import qualified Data.List as L
   import qualified Data.Set as S
+  import Data.WeighedSet (fromWeightList)
   import Control.Monad (foldM,liftM,liftM2)
   import Control.Monad.ST (ST,runST)
   import PIRaTE.SpatialTypes
@@ -73,34 +74,55 @@ module PIRaTE.Scene where
   containing :: [Entity] -> Point -> [Entity]
   containing entities point = filter ((`contains` point).entityContainer) entities
   
-  summedMaterialAt :: [Entity] -> Point -> Material
-  summedMaterialAt entities point = mconcat . concatMap entityMaterials $ entities `containing` point
-  {-# INLINE summedMaterialAt #-}
+  materialsAt :: [Entity] -> Point -> [Material]
+  materialsAt entities point = concatMap entityMaterials $ entities `containing` point
+  {-# INLINE materialsAt #-}
 
-  propertyAt :: (Material->Texture a) -> [Entity] -> Point -> a
-  propertyAt getpropfrom entities point = getpropfrom summat `evaluatedAt` point
-    where summat = summedMaterialAt entities point
+  propertyAt :: (Material->Texture Double) -> [Entity] -> Point -> Double
+  propertyAt getpropfrom entities point = sum [getpropfrom m `evaluatedAt` point | m<-mats]
+    where mats = entities `materialsAt` point
   {-# INLINE propertyAt #-}
     
-  absorptionAt :: [Entity] -> Point -> Double
-  absorptionAt = propertyAt materialAbsorption
+  absorptionAt :: Scene -> Point -> Double
+  absorptionAt scene = propertyAt materialAbsorption (sceneAbsorbers scene)
   {-# INLINE absorptionAt #-}
     
-  scatteringAt :: [Entity] -> Point -> Double
-  scatteringAt = propertyAt materialScattering
+  scatteringAt :: Scene -> Point -> Double
+  scatteringAt scene = propertyAt materialScattering (sceneScatterers scene)
   {-# INLINE scatteringAt #-}
 
-  extinctionAt :: [Entity] -> Point -> Double
-  extinctionAt = propertyAt materialExtinction
+  extinctionAt :: Scene -> Point -> Double
+  extinctionAt scene = propertyAt materialExtinction (sceneInteractors scene)
   {-# INLINE extinctionAt #-}
 
-  emissivityAt :: [Entity] -> Point -> Double
-  emissivityAt = propertyAt materialEmissivity
+  emissivityAt :: Scene -> Point -> Double
+  emissivityAt scene = propertyAt materialEmissivity (sceneEmitters scene)
   {-# INLINE emissivityAt #-}
 
-  sensitivityAt :: [Entity] -> Point -> Double
-  sensitivityAt = propertyAt materialSensitivity
+  sensitivityAt :: Scene -> Point -> Double
+  sensitivityAt scene = propertyAt materialSensitivity (sceneSensors scene)
   {-# INLINE sensitivityAt #-}
+  
+  scatterPhaseFunctionsAt :: Scene -> Point -> WeightedPhaseFunction
+  scatterPhaseFunctionsAt scene point =
+    fromWeightList [m `phaseFunctionWithWeightAt` point | m<-mats]
+    where phaseFunctionWithWeightAt m p = (materialScatteringPhaseFunction m, materialScattering m `evaluatedAt` p)
+          mats = scatterers `materialsAt` point
+          scatterers = sceneScatterers scene
+
+  emissionDirectednessesAt :: Scene -> Point -> WeightedPhaseFunction
+  emissionDirectednessesAt scene point =
+    fromWeightList [m `phaseFunctionWithWeightAt` point | m<-mats]
+    where phaseFunctionWithWeightAt m p = (materialEmissionDirectedness m, materialEmissivity m `evaluatedAt` p)
+          mats = emitters `materialsAt` point
+          emitters = sceneEmitters scene
+
+  sensorDirectednessesAt :: Scene -> Point -> WeightedSensor
+  sensorDirectednessesAt scene point =
+    fromWeightList [m `phaseFunctionWithWeightAt` point | m<-mats]
+    where phaseFunctionWithWeightAt m p = (materialSensor m, materialSensitivity m `evaluatedAt` p)
+          mats = sensors `materialsAt` point
+          sensors = sceneSensors scene
 
   -- a Scene contains all entities
   sceneFromEntities entities = Scene {
@@ -194,12 +216,12 @@ module PIRaTE.Scene where
     --}
 
 
-  disjunctIntervalsWithCondensedMaterials :: [Entity] -> Ray -> [(Interval,Material)]
-  disjunctIntervalsWithCondensedMaterials entities ray =
-    zip disjointintervals condensedintervalmaterials
+  disjointIntervalsWithMaterials :: [Entity] -> Ray -> [(Interval,[Material])]
+  disjointIntervalsWithMaterials entities ray =
+    zip disjointintervals intervalmaterials
     where
       disjointintervals = fst $ unzip taggeddisjointintervals
-      condensedintervalmaterials = getCondensedIntervalMaterials entities taggeddisjointintervals
+      intervalmaterials = getIntervalMaterials entities taggeddisjointintervals
       taggeddisjointintervals    = getTaggedDisjointIntervals entities ray      
 
   -- | returns a list of pairs of disjoint intervals with a set of entityindices which are contained in the interval
@@ -211,18 +233,17 @@ module PIRaTE.Scene where
       nestedindexedintervals = zip [(0::Int)..] entityintersections
       entityintersections = [entityContainer entity `intersectedBy` ray | entity<-entities]
 
-  -- | returns in listform for every disjoint interval the sum of materials of all entities present in the interval
-  getCondensedIntervalMaterials :: [Entity] -> [(Interval, S.Set Int)] -> [Material]
-  getCondensedIntervalMaterials entities taggeddisjointintervals =
-    map mconcat intervalmaterials
+  -- | returns in listform for every disjoint interval the list of materials of all entities present in the interval
+  getIntervalMaterials :: [Entity] -> [(Interval, S.Set Int)] -> [[Material]]
+  getIntervalMaterials entities taggeddisjointintervals =
+    [concat [entitymateriallists!!entityindex | entityindex<-entityindexset] | entityindexset <- intervalentityindexsets]
     where
-      intervalmaterials = [concat [entitymateriallists!!entityindex | entityindex<-entityindexset] | entityindexset <- intervalentityindexsets]
       intervalentityindexsets = map (S.toList . snd) taggeddisjointintervals
       entitymateriallists = map entityMaterials entities
 
   -- sort out intervals that are before the ray starts or further away than maxDist
   -- and clip intervals that span across these bounds
-  clipAndFilterIntervalsWithMaterial :: Double -> [(Interval,Material)] -> [(Interval,Material)]
+  clipAndFilterIntervalsWithMaterial :: Double -> [(Interval,[Material])] -> [(Interval,[Material])]
   clipAndFilterIntervalsWithMaterial maxDist intervalswithmaterials = let
       maxDist' = max 0 maxDist
       outsideOfInterest = uncurry (\x y -> x>=maxDist' || y<=0) . fst
@@ -240,12 +261,12 @@ module PIRaTE.Scene where
   getProbeResultDist _ = Nothing
   {-# INLINE getProbeResultDist #-}
   
-  consumeIntervals :: (Material -> Texture Double) -> Ray -> Double -> Double -> [(Interval,Material)] -> ProbeResult
+  consumeIntervals :: (Material -> Texture Double) -> Ray -> Double -> Double -> [(Interval,[Material])] -> ProbeResult
   consumeIntervals propertyof ray maxDepth accumulatedDepth [] = MaxDistAtDepth accumulatedDepth
-  consumeIntervals propertyof ray maxDepth accumulatedDepth (((a,b), m):rest) = let
+  consumeIntervals propertyof ray maxDepth accumulatedDepth (((a,b), ms):rest) = let
       remainingDepth = maxDepth - accumulatedDepth
       intervalLength = b - a
-      scalarvalue = propertyof m `evaluatedAt` undefined -- only works for Homogenous Materials
+      scalarvalue = sum [propertyof m `evaluatedAt` undefined | m<-ms] -- only works for Homogenous Materials
       intervalDepth = scalarvalue * intervalLength
     in if remainingDepth > intervalDepth
          then consumeIntervals propertyof ray maxDepth (accumulatedDepth + intervalDepth) rest
@@ -260,7 +281,7 @@ module PIRaTE.Scene where
 
   probePropertyOfEntitiesWithRayClosure :: (Material -> Texture Double) -> [Entity] -> Ray -> ((Double,Double) -> ProbeResult)
   probePropertyOfEntitiesWithRayClosure propertyof entities ray = let
-      refinedintervalswithtextures = disjunctIntervalsWithCondensedMaterials entities ray
+      refinedintervalswithtextures = disjointIntervalsWithMaterials entities ray
     in \(maxDist,maxDepth) -> (consumeIntervals propertyof ray maxDepth 0 (clipAndFilterIntervalsWithMaterial maxDist refinedintervalswithtextures))
   
   depthOfBetween :: (Material -> Texture Double) -> [Entity] -> Point -> Point -> Double
@@ -270,8 +291,8 @@ module PIRaTE.Scene where
       proberesult = probePropertyOfEntitiesWithRay propertyof entities ray distance infinity
     in fromJust $ getProbeResultDepth proberesult
 
-  opticalDepthBetween :: [Entity] -> Point -> Point -> Double
-  opticalDepthBetween = depthOfBetween materialExtinction
+  opticalDepthBetween :: Scene -> Point -> Point -> Double
+  opticalDepthBetween scene = depthOfBetween materialExtinction (sceneInteractors scene)
   {-# INLINE opticalDepthBetween #-}
 
 
@@ -399,20 +420,15 @@ module PIRaTE.Scene where
                                                       "in Scene: " ++ show scene
   instance Sampleable SensationDirectionSampler (Maybe Direction) where
     randomSampleFrom (SensationDirectionSampler (scene,origin)) g
-      | null sensors = return Nothing
-      | otherwise = do direction <- randomSampleFrom (weightedsensor,origin) g
+      | (scene `sensitivityAt` origin)==0 = return Nothing
+      | otherwise = do direction <- randomSampleFrom (weightedsensors,origin) g
                        return (Just direction)
-      where weightedsensor = materialSensor originmat
-            originmat = summedMaterialAt sensors origin
-            sensors = sceneSensors scene `containing` origin
+      where weightedsensors = scene `sensorDirectednessesAt` origin
             --TODO: remove double call to `containing` hidden in summedMaterialAt
 
-    sampleProbabilityOf (SensationDirectionSampler (scene,origin)) (Just direction)
-      | null sensors = 0
-      | otherwise = sampleProbabilityOf (weightedsensor, origin) direction
-      where weightedsensor = materialSensor originmat
-            originmat = summedMaterialAt sensors origin
-            sensors = sceneSensors scene `containing` origin
+    sampleProbabilityOf (SensationDirectionSampler (scene,origin)) (Just direction) =
+      sampleProbabilityOf (weightedsensors, origin) direction
+      where weightedsensors = scene `sensorDirectednessesAt` origin
     sampleProbabilityOf (SensationDirectionSampler (scene,origin)) Nothing =
       samplingNothingError "SensationDirectionSampler"
 
@@ -432,19 +448,14 @@ module PIRaTE.Scene where
                                                      "in Scene: " ++ show scene
   instance Sampleable EmissionDirectionSampler (Maybe Direction) where
     randomSampleFrom (EmissionDirectionSampler (scene,origin)) g
-      | null emitters = return Nothing
-      | otherwise = do direction <- randomSampleFrom (weightedphasefunction, Ray origin undefined) g
+      | (scene `emissivityAt` origin)==0 = return Nothing
+      | otherwise = do direction <- randomSampleFrom (weightedphasefunctions, Ray origin undefined) g
                        return (Just direction)
-      where weightedphasefunction = materialEmissionDirectedness originmat
-            originmat = summedMaterialAt emitters origin
-            emitters = sceneEmitters scene `containing` origin
+      where weightedphasefunctions = scene `emissionDirectednessesAt` origin
             
-    sampleProbabilityOf (EmissionDirectionSampler (scene,origin)) (Just direction)
-      | null emitters = 0
-      | otherwise = sampleProbabilityOf (weightedphasefunction, Ray origin undefined) direction
-      where weightedphasefunction = materialEmissionDirectedness originmat
-            originmat = summedMaterialAt emitters origin
-            emitters = sceneEmitters scene `containing` origin
+    sampleProbabilityOf (EmissionDirectionSampler (scene,origin)) (Just direction) =
+      sampleProbabilityOf (weightedphasefunctions, Ray origin undefined) direction
+      where weightedphasefunctions = scene `emissionDirectednessesAt` origin
     sampleProbabilityOf (EmissionDirectionSampler (scene,origin)) Nothing =
       samplingNothingError "EmissionDirectionSampler"
 
@@ -467,19 +478,14 @@ module PIRaTE.Scene where
       "in Scene: " ++ show scene
   instance Sampleable ScatteringDirectionSampler (Maybe Direction) where
     randomSampleFrom (ScatteringDirectionSampler (scene,origin,win)) g
-      | null scatterers = return Nothing
-      | otherwise = do wout <- randomSampleFrom (weightedphasefunction, Ray origin win) g
+      | (scene `scatteringAt` origin)==0 = return Nothing
+      | otherwise = do wout <- randomSampleFrom (weightedphasefunctions, Ray origin win) g
                        return (Just wout)
-      where weightedphasefunction = materialScatteringPhaseFunction originmat
-            originmat = summedMaterialAt scatterers origin
-            scatterers = sceneScatterers scene `containing` origin
+      where weightedphasefunctions = scene `scatterPhaseFunctionsAt` origin
             
-    sampleProbabilityOf (ScatteringDirectionSampler (scene,origin,win)) (Just wout)
-      | null scatterers = 0
-      | otherwise = sampleProbabilityOf (weightedphasefunction, Ray origin win) wout
-      where weightedphasefunction = materialScatteringPhaseFunction originmat
-            originmat = summedMaterialAt scatterers origin
-            scatterers = sceneScatterers scene `containing` origin
+    sampleProbabilityOf (ScatteringDirectionSampler (scene,origin,win)) (Just wout) = 
+      sampleProbabilityOf (weightedphasefunctions, Ray origin win) wout where
+        weightedphasefunctions = scene `scatterPhaseFunctionsAt` origin
     sampleProbabilityOf (ScatteringDirectionSampler (scene,origin,win)) Nothing =
       samplingNothingError "ScatteringDirectionSampler"
 
