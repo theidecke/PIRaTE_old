@@ -34,15 +34,15 @@ module PIRaTE.Scene where
   -- an Entity is a container filled with light-influencing material
   data Entity = Entity {
       entityContainer::Container,
-      entityMaterial::Material
+      entityMaterials::[Material]
     }
   
   entityFromContainerAndMaterials :: Container -> [Material] -> Entity
-  entityFromContainerAndMaterials container materials = Entity container (mconcat materials)
+  entityFromContainerAndMaterials container materials = Entity container materials
   
   instance Show Entity where
-    show (Entity container material) = "Entity contained by a " ++ (show container) ++
-                                       " filled with " ++ (show material)
+    show (Entity container materials) = "Entity contained by a " ++ (show container) ++
+                                        " filled with " ++ (show materials)
   
   randomPointInEntities :: [Entity] -> Gen s -> ST s Point
   randomPointInEntities entities g = do
@@ -51,30 +51,30 @@ module PIRaTE.Scene where
     randomSampleFrom container g
   
   isEmitter :: Entity -> Bool
-  isEmitter (Entity _ material) = isEmitting material
+  isEmitter (Entity _ materials) = any isEmitting materials
   {-# INLINE isEmitter #-}
   
   isInteractor :: Entity -> Bool
-  isInteractor (Entity _ material) = isInteracting material
+  isInteractor (Entity _ materials) = any isInteracting materials
   {-# INLINE isInteractor #-}
   
   isScatterer :: Entity -> Bool
-  isScatterer (Entity _ material) = isScattering material
+  isScatterer (Entity _ materials) = any isScattering materials
   {-# INLINE isScatterer #-}
   
   isAbsorber :: Entity -> Bool
-  isAbsorber (Entity _ material) = isAbsorbing material
+  isAbsorber (Entity _ materials) = any isAbsorbing materials
   {-# INLINE isAbsorber #-}
   
   isSensor :: Entity -> Bool
-  isSensor (Entity _ material) = isSensing material
+  isSensor (Entity _ materials) = any isSensing materials
   {-# INLINE isSensor #-}
   
   containing :: [Entity] -> Point -> [Entity]
   containing entities point = filter ((`contains` point).entityContainer) entities
   
   summedMaterialAt :: [Entity] -> Point -> Material
-  summedMaterialAt entities point = mconcat . map entityMaterial $ entities `containing` point
+  summedMaterialAt entities point = mconcat . concatMap entityMaterials $ entities `containing` point
   {-# INLINE summedMaterialAt #-}
 
   propertyAt :: (Material->Texture a) -> [Entity] -> Point -> a
@@ -217,9 +217,9 @@ module PIRaTE.Scene where
   getCondensedIntervalMaterials entities taggeddisjointintervals =
     map mconcat intervalmaterials
     where
-      intervalmaterials = [[entitymaterialslist!!entityindex | entityindex<-entityindexset] | entityindexset <- intervalentityindexsets]
+      intervalmaterials = [concat [entitymateriallists!!entityindex | entityindex<-entityindexset] | entityindexset <- intervalentityindexsets]
       intervalentityindexsets = map (S.toList . snd) taggeddisjointintervals
-      entitymaterialslist = map entityMaterial entities
+      entitymateriallists = map entityMaterials entities
 
   -- sort out intervals that are before the ray starts or further away than maxDist
   -- and clip intervals that span across these bounds
