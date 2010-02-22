@@ -2,7 +2,7 @@
 {-# LANGUAGE FlexibleInstances #-}
 
 module Data.EmpiricalDiscreteDistribution (
-    Tree,empty,singleton,insert,randomSampleFrom,sampleProbabilityOf,hasNonzeroSamples
+    Tree,empty,singleton,insert,randomSampleFrom,sampleProbabilityOf,hasNonzeroSamples,toWeightList
   ) where
   import Data.Maybe(fromJust,isJust)
   import System.Random.MWC (uniform)
@@ -15,8 +15,12 @@ module Data.EmpiricalDiscreteDistribution (
 
   instance (Show a) => Show (Tree a) where
     show Empty = ""
-    --show (Branch l r p pw pn nw) = "("++show p++" "++show pw++" "++show pn++" "++show nw++" L"++show l++" "++" R"++show r++")"
-    show (Branch l r p pw pn nw) = show l++" "++show p++" "++show pw++" "++show pn++" "++show nw++" "++show r
+    show (Branch l r p pw pn nw) = "("++show p++" "++show pw++" "++show pn++" "++show nw++" L"++show l++" "++" R"++show r++")"
+    --show (Branch l r p pw pn nw) = show l++" "++show p++" "++show pw++" "++show pn++" "++show nw++" "++show r
+
+  toWeightList :: (Tree a) -> [(a, Double)]
+  toWeightList Empty = []
+  toWeightList (Branch l r p pw _ _) = (p,pw):(toWeightList l ++ toWeightList r)
 
   instance  (NFData a) => NFData (Tree a)  where
     rnf Empty                   = ()

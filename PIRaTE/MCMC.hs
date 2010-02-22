@@ -30,7 +30,8 @@ module PIRaTE.MCMC where
         mfeedback' a = (\x -> (x,a,n)) `fmap` mfeedback
         mutmem'mutfail = updateMutationMemory (mfeedback' 0) mutmem
     if (isNothing maybenewstate)
-      then metropolisStep scene mutations (old, mutmem'mutfail) g
+      then --trace =<< (((show mutation++"["++show mfeedback++"] : ")++). const "0.0 (failed)") $
+           metropolisStep scene mutations (old, mutmem'mutfail) g
       else do let newstate = fromJust maybenewstate
                   newingredients = measurementContributionHelper scene newstate
                   new = (newstate,newingredients)

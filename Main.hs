@@ -1,8 +1,9 @@
 module Main where
   import Data.Vector (Vector3(..),v3x,v3y)
   import qualified Data.WeighedSet as WS
-  import qualified Data.List as L (intersperse,foldl')
+  import qualified Data.List as L (intersperse,foldl',sortBy)
   import qualified Data.Map as M
+  import qualified Data.EmpiricalDiscreteDistribution as EDD (Tree, toWeightList)
   import System.Environment
   import Text.Printf
   import Control.Parallel
@@ -143,7 +144,13 @@ module Main where
       | otherwise = x:reduceList (y:xs)
     reduceList (x:[]) = x:[]
     reduceList [] = []
-    
+
+  putMutMemStats mutmems = putStrLn . showListForMathematica (\x->show x++"\n") . map toSortedList $ listmutmem where
+    listmutmem = M.toList . last $ mutmems
+    toSortedList (k,t) = (k, reverse . sortByAccProb $ EDD.toWeightList t)
+    sortByAccProb = L.sortBy compareAccProbs
+    compareAccProbs (_,p1) (_,p2) = compare p1 p2
+
   main = do
     args <- getArgs
     --[gridsize,n] <- map read `fmap` args
@@ -181,8 +188,8 @@ module Main where
         samplesessions = map (startSampleSession sessionsize) [1..sessioncount]
         samples = concat (map fst samplesessions `using` parList rdeepseq)
         mutmems = map snd samplesessions
-    --putStrLn . showListForMathematica (\x->show x++"\n") . M.toList . last $ mutmems
     --putRadiallyBinnedPhotonCounts gridsize samples
     putGridBinnedPhotonCounts gridsize samples
     --putPhotonList samples
     --putPathLengthList samples
+    --putMutMemStats mutmems
