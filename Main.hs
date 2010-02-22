@@ -23,7 +23,7 @@ module Main where
                           toHomogenousEmittingMaterial)
   import PIRaTE.Scene (Entity,entityFromContainerAndMaterials,Scene,sceneFromEntities)
   import PIRaTE.Sensor (SensorResult(..))
-  import PIRaTE.MCMC (mltAction)
+  import PIRaTE.MCMC (mltAction,MutationMemory)
   import PIRaTE.Mutation (
       Mutation(..),
       ExponentialScatteringNodeTranslation(..),
@@ -145,8 +145,9 @@ module Main where
     reduceList (x:[]) = x:[]
     reduceList [] = []
 
-  putMutMemStats mutmems = putStrLn . showListForMathematica (\x->show x++"\n") . map toSortedList $ listmutmem where
-    listmutmem = M.toList . last $ mutmems
+  putMutMemStats :: [MutationMemory] -> IO ()
+  putMutMemStats = putStrLn . showMList . map toSortedList . M.toList . last where
+    showMList = showListForMathematica (\x->show x++"\n")
     toSortedList (k,t) = (k, reverse . sortByAccProb $ EDD.toWeightList t)
     sortByAccProb = L.sortBy compareAccProbs
     compareAccProbs (_,p1) (_,p2) = compare p1 p2
