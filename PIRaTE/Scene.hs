@@ -263,15 +263,28 @@ module PIRaTE.Scene where
   
   consumeIntervals :: (Material -> Texture Double) -> Ray -> Double -> Double -> [(Interval,[Material])] -> ProbeResult
   consumeIntervals propertyof ray maxDepth accumulatedDepth [] = MaxDistAtDepth accumulatedDepth
-  consumeIntervals propertyof ray maxDepth accumulatedDepth (((a,b), ms):rest) = let
+  consumeIntervals propertyof ray maxDepth accumulatedDepth (((a,b), ms):rest) = case raymarchresult of
+      (MaxDistAtDepth    intervaldepth) -> consumeIntervals propertyof ray maxDepth (accumulatedDepth + intervaldepth) rest
+      (MaxDepthAtDistance maxdepthdist) -> MaxDepthAtDistance maxdepthdist
+    where
+      raymarchresult = raymarcher (a,b) scalarfunction remainingDepth
+      raymarcher | all isHomogenous scalarfields = rayMarchHomogenousInterval
+                 | otherwise = undefined
       remainingDepth = maxDepth - accumulatedDepth
-      intervalLength = b - a
-      scalarvalue = sum [propertyof m `evaluatedAt` undefined | m<-ms] -- only works for Homogenous Materials
-      intervalDepth = scalarvalue * intervalLength
-    in if remainingDepth > intervalDepth
-         then consumeIntervals propertyof ray maxDepth (accumulatedDepth + intervalDepth) rest
-         else let neededDist = remainingDepth / scalarvalue
-              in MaxDepthAtDistance (a+neededDist)
+      scalarfunction s = sum [sf `evaluatedAt` p | sf<-scalarfields] where p = ray `followFor` s
+      scalarfields = map propertyof ms
+  
+  rayMarchHomogenousInterval (a,b) f remainingdepth
+    | remainingdepth > intervaldepth = MaxDistAtDepth intervaldepth
+    | otherwise                      = MaxDepthAtDistance (a+neededdist)
+    where
+      neededdist = remainingdepth / scalarvalue
+      intervaldepth = scalarvalue * intervallength
+      intervallength = b - a
+      scalarvalue = f undefined -- only works for Homogenous Materials
+
+  --rayMarchInterval :: (Interval,[Material]) -> 
+  --rayMarchInterval ((a,b), ms) remainingDepth f
   
   -- casts a Ray through a list of entities until either a maximum optical depth
   -- or a maximum distance is reached
