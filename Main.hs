@@ -1,5 +1,5 @@
 module Main where
-  import Data.Vector (Vector3(..),v3x,v3y)
+  import Data.Vector (Vector3(..),v3x,v3y,vmag)
   import qualified Data.WeighedSet as WS
   import qualified Data.List as L (intersperse,foldl',sortBy)
   import qualified Data.Map as M
@@ -19,6 +19,7 @@ module Main where
   import PIRaTE.PhaseFunction.ZCone (fromApexAngle)
   import PIRaTE.Texture (Texture(..))
   import PIRaTE.Material (toHomogenousInteractingMaterial,
+                          toCustomInteractingMaterial,
                           toHomogenousSensingMaterial,
                           toHomogenousEmittingMaterial)
   import PIRaTE.Scene (Entity,entityFromContainerAndMaterials,Scene,sceneFromEntities)
@@ -83,6 +84,26 @@ module Main where
       entities = [lightsourceentity, scatteringentity,sensorentity]
     in sceneFromEntities entities
   
+  inhomScene sigma = let
+      emissionphasefunction   = (1,PhaseFunction Isotropic)
+      scatteringphasefunction = (1,PhaseFunction Isotropic)
+      sensationphasefunction  = (1,PhaseFunction $ fromApexAngle sensorangle, PathLength . mltStatePathLength)
+      lightsourcecontainer = Container $ Sphere (Vector3 0 0 0) 0.01
+      lightsourcematerial = toHomogenousEmittingMaterial 1.0 emissionphasefunction
+      lightsourceentity = entityFromContainerAndMaterials lightsourcecontainer [lightsourcematerial]
+      scatteringcontainer = Container $ Sphere (Vector3 0 0 0) 1
+      scatteringmaterial = toCustomInteractingMaterial Empty (Inhomogenous sigmafun) scatteringphasefunction
+      --sigmafun p = sigma*((0.5 - 0.5*(cos (2*pi*r)))^2) where r = vmag p
+      sigmafun p | r<0.55 && r>0.45 = sigma
+                 | otherwise = 0
+                 where r = vmag p
+      scatteringentity = entityFromContainerAndMaterials scatteringcontainer [scatteringmaterial]
+      sensorcontainer = Container $ fromCorners (Vector3 (-1) (-1) (-4.01)) (Vector3 1 1 (-3.99))
+      sensormaterial = toHomogenousSensingMaterial 1.0 sensationphasefunction
+      sensorangle = 1 * arcmin
+      sensorentity = entityFromContainerAndMaterials sensorcontainer [sensormaterial]
+      entities = [lightsourceentity, scatteringentity,sensorentity]
+    in sceneFromEntities entities
   
   showSample (x,y) = printf "{%f,%f}" x y
   showSamplesForMathematica :: [(Double,Double)] -> String
@@ -180,7 +201,8 @@ module Main where
         getChunksize = min 100
         chunksize = getChunksize n
         --sigma = 5.0
-        scene = standardScene sigma
+        --scene = standardScene sigma
+        scene = inhomScene sigma
         --scene = testScene
         sessionsize = min 20000 n --n
         sessioncount = n `div` sessionsize

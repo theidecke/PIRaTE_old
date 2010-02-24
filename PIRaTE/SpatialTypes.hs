@@ -9,7 +9,8 @@ module PIRaTE.SpatialTypes where
   newtype Direction = Direction Vector3
   unDirection (Direction d) = d
   appliedToDirection f (Direction d) = Direction (f d)
-  fromEdge e = Direction (normalize e)
+  fromEdge e | e `vdot` e==0 = error "fromEdge: cannot infer direction from edge with zero length"
+             | otherwise = Direction (normalize e)
   
   instance Show Direction where
     show (Direction d) = showVector3 d
@@ -49,6 +50,7 @@ module PIRaTE.SpatialTypes where
     show (Ray o d) = "Ray starting at "++ (showVector3 o) ++" going in Direction "++ (show d) 
 
   fromTwoPoints :: Point -> Point -> Ray
-  fromTwoPoints v w = Ray v (Direction $ normalize (w-v))
+  fromTwoPoints v w | v==w      = error "fromTwoPoints: cannot infer direction between two equal points"
+                    | otherwise = Ray v (Direction $ normalize (w-v))
   
   type Interval = (Double,Double)

@@ -267,14 +267,14 @@ module PIRaTE.Scene where
       (MaxDistAtDepth    intervaldepth) -> consumeIntervals propertyof ray maxDepth (accumulatedDepth + intervaldepth) rest
       (MaxDepthAtDistance maxdepthdist) -> MaxDepthAtDistance maxdepthdist
     where
-      raymarchresult = raymarcher (a,b) scalarfunction remainingDepth
+      raymarchresult = raymarcher scalarfunction (a,b) remainingDepth
       raymarcher | all isHomogenous scalarfields = rayMarchHomogenousInterval
-                 | otherwise = undefined
+                 | otherwise                     = rayMarchInhomogenousInterval
       remainingDepth = maxDepth - accumulatedDepth
       scalarfunction s = sum [sf `evaluatedAt` p | sf<-scalarfields] where p = ray `followFor` s
       scalarfields = map propertyof ms
   
-  rayMarchHomogenousInterval (a,b) f remainingdepth
+  rayMarchHomogenousInterval f (a,b) remainingdepth
     | remainingdepth > intervaldepth = MaxDistAtDepth intervaldepth
     | otherwise                      = MaxDepthAtDistance (a+neededdist)
     where
@@ -283,8 +283,52 @@ module PIRaTE.Scene where
       intervallength = b - a
       scalarvalue = f undefined -- only works for Homogenous Materials
 
-  --rayMarchInterval :: (Interval,[Material]) -> 
-  --rayMarchInterval ((a,b), ms) remainingDepth f
+  rayMarchInhomogenousInterval f (a,b) remainingdepth =
+    --(\x-> trace (show x++"\n rem.depth:"++show remainingdepth++"\n (a,b)="++show (a,b)) x) $
+    simpleRK4Stepper 0.1 0.001 0.001 1.0 f (a,b) remainingdepth
+  
+  simpleRK4Stepper maxstep atol rtol h0 f (a,b) ygoal = stepper f b ygoal h0 (a, 0, f a) where
+    stepper f xmax ymax h ics@(x,y,y')
+      | rx              <= 1e-14 = MaxDistAtDepth y
+      | getError y ymax <  1     = if y'>0 then MaxDepthAtDistance (x+ry/y') else MaxDepthAtDistance x
+      | otherwise                = stepper f xmax ymax nexth nextics
+      where rx = getRemainingX ics
+            ry = getRemainingY ics
+            nexth = max minnexth $ min maxnexth $ safety * h * err**(-0.2)
+            maxnexth = min (getRemainingX nextics) maxstep
+            minnexth = 1e-7
+            nextics | yovershoot = yfitstep
+                    | largeerror = ics
+                    | otherwise  = twosteps
+            largeerror = err > 1
+            err = getError (getY onestep) (getY twosteps)
+            yovershoot = getRemainingY twosteps < 0
+            safety = 0.9
+            onestep  = rk4step f h ics
+            twosteps = rk4step f hh (rk4step f hh ics) where hh = 0.5*h
+            yfitstep = bisection ics twosteps
+            bisection ics1 ics2 | ry1*ry2 > 0          = if abs ry1 < abs ry2 then ics1 else ics2
+                                | abs (x2-x1) < 1e-10  = ics1
+                                | getError y1 ymax < 1 = ics1
+                                | getError y2 ymax < 1 = ics2
+                                | otherwise            = bisection ics1' ics2'
+                                where (ics1',ics2') = if ry3 < 0 then (ics1,ics3) else (ics3,ics2)
+                                      ry1 = getRemainingY ics1
+                                      ry2 = getRemainingY ics2
+                                      ry3 = getRemainingY ics3
+                                      ics3 = rk4step f h3 ics1
+                                      h3 = 0.5*(x2-x1)
+                                      (x1,y1,_) = ics1
+                                      (x2,y2,_) = ics2
+            getError y1 y2 = (abs (y2 - y1)) / (atol + (max (abs y1) (abs y2))*rtol)
+            getY (_,y,_) = y
+            getRemainingX (x,_,_) = xmax - x
+            getRemainingY (_,y,_) = ymax - y
+            rk4step f h (x,y,y') = (x+h,y+dy,k4) where
+              dy  = (k1+4*(k23)+k4)*h/6
+              k1  = y'
+              k23 = f (x+0.5*h)
+              k4  = f (x+h)
   
   -- casts a Ray through a list of entities until either a maximum optical depth
   -- or a maximum distance is reached
@@ -298,11 +342,13 @@ module PIRaTE.Scene where
     in \(maxDist,maxDepth) -> (consumeIntervals propertyof ray maxDepth 0 (clipAndFilterIntervalsWithMaterial maxDist refinedintervalswithtextures))
   
   depthOfBetween :: (Material -> Texture Double) -> [Entity] -> Point -> Point -> Double
-  depthOfBetween propertyof entities v w = let
+  depthOfBetween propertyof entities v w
+    | v==w = 0
+    | otherwise = fromJust $ getProbeResultDepth proberesult
+    where
       distance = vmag $ w - v
       ray = Ray v (Direction $ (1/distance)|*(w-v))
       proberesult = probePropertyOfEntitiesWithRay propertyof entities ray distance infinity
-    in fromJust $ getProbeResultDepth proberesult
 
   opticalDepthBetween :: Scene -> Point -> Point -> Double
   opticalDepthBetween scene = depthOfBetween materialExtinction (sceneInteractors scene)
@@ -653,7 +699,8 @@ module PIRaTE.Scene where
                            randomdepth = negate $ log (1 - absorptionatinfinity * (u1::Double))
                            proberesult = probeMedia (infinity, randomdepth)
                            distance = getProbeResultDist proberesult
-                       return distance
+                           mindist = 1e-14 -- avoids 0div-errors because of identical points
+                       return $ (max mindist) `fmap` distance
       where totaldepth = fromJust $ getProbeResultDepth totaldepthproberesult
             totaldepthproberesult = probeMedia (infinity, infinity)
             probeMedia = probePropertyOfEntitiesWithRayClosure materialproperty entities ray

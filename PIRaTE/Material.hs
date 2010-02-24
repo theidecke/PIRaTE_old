@@ -1,6 +1,7 @@
 module PIRaTE.Material (
     Material,
     toHomogenousInteractingMaterial,
+    toCustomInteractingMaterial,
     toHomogenousEmittingMaterial,
     toHomogenousSensingMaterial,
     materialAbsorption,
@@ -60,6 +61,12 @@ module PIRaTE.Material (
           sigmatex = Homogenous sigma
           pftex | sigma==0  = undefined
                 | otherwise = ipftex
+          ipftex = IndexedPhaseFunction ipf
+
+  toCustomInteractingMaterial :: (Texture Double) -> (Texture Double) -> (Int,PhaseFunction) -> Material
+  toCustomInteractingMaterial kappatex sigmatex ipf@(index,pf) =
+    Material kappatex sigmatex pftex mempty undefined mempty undefined
+    where pftex = ipftex
           ipftex = IndexedPhaseFunction ipf
 
   toHomogenousEmittingMaterial :: Double -> (Int,PhaseFunction) -> Material

@@ -477,7 +477,7 @@ module PIRaTE.Path where
       where dirprob  = sampleProbabilityOf  dirsampler (Just  dir)
             distprob = sampleProbabilityOf distsampler (Just dist)
             distsampler = dir2distsampler dir
-            dir = Direction $ (1/dist) |* edge --fromEdge edge
+            dir = fromEdge edge
             dist = vmag edge
             edge = p - origin
             origin = dirSamplerOrigin dirsampler
