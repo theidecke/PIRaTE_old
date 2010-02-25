@@ -295,7 +295,7 @@ module PIRaTE.Scene where
       | otherwise = stepper f xmax ymax h nextics
       where nextics = eulerStep f h ics
             eulerStep f h (x,y,y') = (newx, y+y'*h, f newx) where newx = x+h
-    x0 = 0.5*(min maxstep (b-a))
+    x0 = a + 0.5*(min maxstep (b-a))
     
     
   simpleRK4Stepper maxstep atol rtol h0 f (a,b) ygoal = stepper f b ygoal h0 (a, 0, f a) where
