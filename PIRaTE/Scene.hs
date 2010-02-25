@@ -285,8 +285,19 @@ module PIRaTE.Scene where
 
   rayMarchInhomogenousInterval f (a,b) remainingdepth =
     --(\x-> trace (show x++"\n rem.depth:"++show remainingdepth++"\n (a,b)="++show (a,b)) x) $
-    simpleRK4Stepper 0.1 0.001 0.001 1.0 f (a,b) remainingdepth
+    --simpleRK4Stepper 0.01 0.001 0.001 1.0 f (a,b) remainingdepth
+    simpleEulerStepper 0.01 f (a,b) remainingdepth
   
+  simpleEulerStepper maxstep f (a,b) ygoal = stepper f b ygoal maxstep (x0, 0, f x0) where
+    stepper f xmax ymax h ics@(x,y,y')
+      | x >= xmax = MaxDistAtDepth y
+      | y >= ymax = MaxDepthAtDistance x
+      | otherwise = stepper f xmax ymax h nextics
+      where nextics = eulerStep f h ics
+            eulerStep f h (x,y,y') = (newx, y+y'*h, f newx) where newx = x+h
+    x0 = 0.5*(min maxstep (b-a))
+    
+    
   simpleRK4Stepper maxstep atol rtol h0 f (a,b) ygoal = stepper f b ygoal h0 (a, 0, f a) where
     stepper f xmax ymax h ics@(x,y,y')
       | rx              <= 1e-14 = MaxDistAtDepth y
@@ -652,7 +663,7 @@ module PIRaTE.Scene where
       where distsampler = getScatteringDistanceSampler scene origin direction
     {-# INLINE sampleProbabilityOf #-}
 
-  getScatteringDistanceSampler scene origin direction = UniformAttenuation2Sampleable (scatterers, property, ray) where
+  getScatteringDistanceSampler scene origin direction = UniformAttenuationDistanceSampleable (scatterers, property, ray) where
     scatterers = sceneScatterers scene
     property = materialScattering
     ray = Ray origin direction
