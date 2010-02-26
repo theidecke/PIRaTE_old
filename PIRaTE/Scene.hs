@@ -663,7 +663,7 @@ module PIRaTE.Scene where
       where distsampler = getScatteringDistanceSampler scene origin direction
     {-# INLINE sampleProbabilityOf #-}
 
-  getScatteringDistanceSampler scene origin direction = UniformAttenuationDistanceSampleable (scatterers, property, ray) where
+  getScatteringDistanceSampler scene origin direction = UniformAttenuation2Sampleable (scatterers, property, ray) where
     scatterers = sceneScatterers scene
     property = materialScattering
     ray = Ray origin direction

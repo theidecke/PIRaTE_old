@@ -91,12 +91,12 @@ module Main where
       lightsourcecontainer = Container $ Sphere (Vector3 0 0 0) 0.01
       lightsourcematerial = toHomogenousEmittingMaterial 1.0 emissionphasefunction
       lightsourceentity = entityFromContainerAndMaterials lightsourcecontainer [lightsourcematerial]
-      scatteringcontainer = Container $ Sphere (Vector3 0 0 0) 1
+      scatteringcontainer = Container $ fromCorners (Vector3 (-1) (-1) (-1)) (Vector3 1 1 1)
       scatteringmaterial = toCustomInteractingMaterial Empty (Inhomogenous sigmafun) scatteringphasefunction
-      --sigmafun p = sigma*((0.5 - 0.5*(cos (2*pi*r)))^2) where r = vmag p
-      sigmafun p | r<0.55 && r>0.45 = sigma
-                 | otherwise = 0
-                 where r = vmag p
+      sigmafun = simpleDisc sigma 0.1 1.0 0.25
+      simpleDisc m eps so a = rho where
+        rho p = c / ((exp (0.5*(z/(eps*s))^2))*(a^2+s^2)) where {z=v3y p; s=sqrt ((v3x p)^2+(v3z p)^2)}
+        c = m / ((2*pi)**1.5 * eps * (so - a*(atan (so/a))))
       scatteringentity = entityFromContainerAndMaterials scatteringcontainer [scatteringmaterial]
       sensorcontainer = Container $ fromCorners (Vector3 (-1) (-1) (-4.01)) (Vector3 1 1 (-3.99))
       sensormaterial = toHomogenousSensingMaterial 1.0 sensationphasefunction
