@@ -286,7 +286,8 @@ module PIRaTE.Scene where
   rayMarchInhomogenousInterval f (a,b) remainingdepth =
     --(\x-> trace (show x++"\n rem.depth:"++show remainingdepth++"\n (a,b)="++show (a,b)) x) $
     --simpleRK4Stepper 0.01 0.001 0.001 1.0 f (a,b) remainingdepth
-    simpleEulerStepper 0.01 f (a,b) remainingdepth
+    --simpleEulerStepper 0.01 f (a,b) remainingdepth
+    simpleLobattoStepper 0.05 f (a,b) remainingdepth
   
   simpleEulerStepper maxstep f (a,b) ygoal = stepper f b ygoal maxstep (x0, 0, f x0) where
     stepper f xmax ymax h ics@(x,y,y')
@@ -296,7 +297,33 @@ module PIRaTE.Scene where
       where nextics = eulerStep f h ics
             eulerStep f h (x,y,y') = (newx, y+y'*h, f newx) where newx = x+h
     x0 = a + 0.5*(min maxstep (b-a))
-    
+
+  simpleLobattoStepper maxstep f (a,b) ygoal = stepper f b ygoal h0 (a, 0, f a) where
+    stepper f xmax ymax h ics@(x,y,y')
+      | abs rx <= xtol && ry>0   = MaxDistAtDepth y
+      | abs ry <= ytol           = MaxDepthAtDistance (x+(max 0 $ min h (ry/y')))
+      | ny <= ymax && nx <= xmax = stepper f xmax ymax nexth nextics
+      | otherwise                = stepper f xmax ymax subdivh ics -- overshoot -> repeat last step with smaller h
+      where subdivh = max (0.1*h) $ min (0.9*h) (ry/(getSlope ics nextics))
+            nexth = max 0 $ min maxstep hprop
+            hprop = proposeH ics nextics
+            nextics@(nx,ny,_) = lobattoStep f h ics
+            rx = xmax - x
+            ry = ymax - y
+            proposeH (xo,yo,yo') (xn,yn,yn') = min hxprop hyprop where
+              hxprop = xmax - xn
+              hyprop = (ymax - yn)/yn' --(xn - xo) * (abs (ymax - yn)) / (yn - yo)
+            getSlope (xo,yo,_) (xn,yn,_) = (yn-yo)/(xn-xo)
+            xtol = 1e-8
+            ytol = 1e-4
+    h0 = min maxstep (b-a)
+      
+
+  lobattoStep f h (x,y,y') = (x+h,y+dy,last samples) where
+    dy = (h*) . sum $ zipWith (*) lobattoweights samples
+    samples = y' : map (f . (\t->x+h*t)) (tail lobattopositions)
+    lobattopositions = [0,0.17267316464601143283,0.5,0.82732683535398856717,1.0]
+    lobattoweights   = [0.05,49/180,16/45,49/180,0.05]
     
   simpleRK4Stepper maxstep atol rtol h0 f (a,b) ygoal = stepper f b ygoal h0 (a, 0, f a) where
     stepper f xmax ymax h ics@(x,y,y')
