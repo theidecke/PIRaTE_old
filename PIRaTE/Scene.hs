@@ -285,9 +285,8 @@ module PIRaTE.Scene where
 
   rayMarchInhomogenousInterval f (a,b) remainingdepth =
     --(\x-> trace (show x++"\n rem.depth:"++show remainingdepth++"\n (a,b)="++show (a,b)) x) $
-    --simpleRK4Stepper 0.01 0.001 0.001 1.0 f (a,b) remainingdepth
     --simpleEulerStepper 0.01 f (a,b) remainingdepth
-    simpleLobattoStepper 0.05 f (a,b) remainingdepth
+    simpleGaussStepper 0.01 f (a,b) remainingdepth
   
   simpleEulerStepper maxstep f (a,b) ygoal = stepper f b ygoal maxstep (x0, 0, f x0) where
     stepper f xmax ymax h ics@(x,y,y')
@@ -298,75 +297,28 @@ module PIRaTE.Scene where
             eulerStep f h (x,y,y') = (newx, y+y'*h, f newx) where newx = x+h
     x0 = a + 0.5*(min maxstep (b-a))
 
-  simpleLobattoStepper maxstep f (a,b) ygoal = stepper f b ygoal h0 (a, 0, f a) where
-    stepper f xmax ymax h ics@(x,y,y')
-      | abs rx <= xtol && ry>0   = MaxDistAtDepth y
-      | abs ry <= ytol           = MaxDepthAtDistance (x+(max 0 $ min h (ry/y')))
-      | ny <= ymax && nx <= xmax = stepper f xmax ymax nexth nextics
-      | otherwise                = stepper f xmax ymax subdivh ics -- overshoot -> repeat last step with smaller h
-      where subdivh = max (0.1*h) $ min (0.9*h) (ry/(getSlope ics nextics))
-            nexth = max 0 $ min maxstep hprop
-            hprop = proposeH ics nextics
-            nextics@(nx,ny,_) = lobattoStep f h ics
-            rx = xmax - x
-            ry = ymax - y
-            proposeH (xo,yo,yo') (xn,yn,yn') = min hxprop hyprop where
-              hxprop = xmax - xn
-              hyprop = (ymax - yn)/yn' --(xn - xo) * (abs (ymax - yn)) / (yn - yo)
-            getSlope (xo,yo,_) (xn,yn,_) = (yn-yo)/(xn-xo)
-            xtol = 1e-8
-            ytol = 1e-4
-    h0 = min maxstep (b-a)
-      
+  simpleGaussStepper maxstep f (a,b) ygoal = stepper f b ygoal h0 (a, 0) where
+    stepper f xmax ymax h ics@(x,y)
+      | x + xtol >= xmax = MaxDistAtDepth y
+      | y        >= ymax = MaxDepthAtDistance x
+      | otherwise = stepper f xmax ymax h nextics
+      where nextics = gaussStep f h ics
+    h0 = intervallength / (fromIntegral steps) --min maxstep intervallength
+    steps = ceiling $ intervallength / maxstep 
+    intervallength = b - a
+    xtol = 1e-12
 
-  lobattoStep f h (x,y,y') = (x+h,y+dy,last samples) where
-    dy = (h*) . sum $ zipWith (*) lobattoweights samples
-    samples = y' : map (f . (\t->x+h*t)) (tail lobattopositions)
-    lobattopositions = [0,0.17267316464601143283,0.5,0.82732683535398856717,1.0]
-    lobattoweights   = [0.05,49/180,16/45,49/180,0.05]
-    
-  simpleRK4Stepper maxstep atol rtol h0 f (a,b) ygoal = stepper f b ygoal h0 (a, 0, f a) where
-    stepper f xmax ymax h ics@(x,y,y')
-      | rx              <= 1e-14 = MaxDistAtDepth y
-      | getError y ymax <  1     = if y'>0 then MaxDepthAtDistance (x+ry/y') else MaxDepthAtDistance x
-      | otherwise                = stepper f xmax ymax nexth nextics
-      where rx = getRemainingX ics
-            ry = getRemainingY ics
-            nexth = max minnexth $ min maxnexth $ safety * h * err**(-0.2)
-            maxnexth = min (getRemainingX nextics) maxstep
-            minnexth = 1e-7
-            nextics | yovershoot = yfitstep
-                    | largeerror = ics
-                    | otherwise  = twosteps
-            largeerror = err > 1
-            err = getError (getY onestep) (getY twosteps)
-            yovershoot = getRemainingY twosteps < 0
-            safety = 0.9
-            onestep  = rk4step f h ics
-            twosteps = rk4step f hh (rk4step f hh ics) where hh = 0.5*h
-            yfitstep = bisection ics twosteps
-            bisection ics1 ics2 | ry1*ry2 > 0          = if abs ry1 < abs ry2 then ics1 else ics2
-                                | abs (x2-x1) < 1e-10  = ics1
-                                | getError y1 ymax < 1 = ics1
-                                | getError y2 ymax < 1 = ics2
-                                | otherwise            = bisection ics1' ics2'
-                                where (ics1',ics2') = if ry3 < 0 then (ics1,ics3) else (ics3,ics2)
-                                      ry1 = getRemainingY ics1
-                                      ry2 = getRemainingY ics2
-                                      ry3 = getRemainingY ics3
-                                      ics3 = rk4step f h3 ics1
-                                      h3 = 0.5*(x2-x1)
-                                      (x1,y1,_) = ics1
-                                      (x2,y2,_) = ics2
-            getError y1 y2 = (abs (y2 - y1)) / (atol + (max (abs y1) (abs y2))*rtol)
-            getY (_,y,_) = y
-            getRemainingX (x,_,_) = xmax - x
-            getRemainingY (_,y,_) = ymax - y
-            rk4step f h (x,y,y') = (x+h,y+dy,k4) where
-              dy  = (k1+4*(k23)+k4)*h/6
-              k1  = y'
-              k23 = f (x+0.5*h)
-              k4  = f (x+h)
+  gaussStep f h (x,y) = (x+h,y+dy) where
+    dy = (h*) . sum $ zipWith (*) gaussweights samples
+    samples = map (f . (\t->x+h*t)) gausspositions
+    (gausspositions,gaussweights) = gauss2  
+
+  gauss2 = ([0.2113248654051871, 0.7886751345948129],[0.5,0.5])
+  gauss3 = ([0.1127016653792583,0.5,0.8872983346207417],[5/18,4/9,5/18])
+  gauss4 = ([0.06943184420297371, 0.3300094782075719, 0.6699905217924281, 0.930568155797026], 
+            [0.1739274225687269, 0.3260725774312731, 0.3260725774312731, 0.1739274225687269])
+  gauss5 = ([0.04691007703066800, 0.2307653449471585, 0.5, 0.7692346550528415, 0.953089922969332], 
+            [0.1184634425280945, 0.2393143352496832, 0.2844444444444444, 0.2393143352496832, 0.1184634425280945])
   
   -- casts a Ray through a list of entities until either a maximum optical depth
   -- or a maximum distance is reached
