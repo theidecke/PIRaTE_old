@@ -95,7 +95,7 @@ module Main where
       scatteringmaterial = toCustomInteractingMaterial Empty (Inhomogenous sigmafun) scatteringphasefunction
       sigmafun = simpleDisc sigma 0.1 1.0 0.25
       simpleDisc m eps so a = rho where
-        rho p = c / ((exp (0.5*(z/(eps*s))^2))*(a^2+s^2)) where {z=v3y p; s=sqrt ((v3x p)^2+(v3z p)^2)}
+        rho p = if s > 1 then 0 else c / ((exp (0.5*(z/(eps*s))^2))*(a^2+s^2)) where {z=v3y p; s=sqrt ((v3x p)^2+(v3z p)^2)}
         c = m / ((2*pi)**1.5 * eps * (so - a*(atan (so/a))))
       scatteringentity = entityFromContainerAndMaterials scatteringcontainer [scatteringmaterial]
       sensorcontainer = Container $ fromCorners (Vector3 (-1) (-1) (-4.01)) (Vector3 1 1 (-3.99))
