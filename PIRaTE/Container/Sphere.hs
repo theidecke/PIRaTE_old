@@ -2,7 +2,7 @@
 {-# LANGUAGE TypeSynonymInstances #-}
 
 module PIRaTE.Container.Sphere where
-  import Data.Vector ((|*),vdot)
+  import Data.ACVector ((|*),vdot)
   import PIRaTE.SpatialTypes
   import PIRaTE.UtilityFunctions (normsq)
   import PIRaTE.Confineable

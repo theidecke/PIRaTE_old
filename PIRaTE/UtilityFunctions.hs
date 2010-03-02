@@ -1,5 +1,5 @@
 module PIRaTE.UtilityFunctions where
-  import Data.Vector
+  import Data.ACVector
   
   -- some utility functions
   normsq v = v `vdot` v

@@ -1,7 +1,7 @@
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 module PIRaTE.PhaseFunction.Isotropic where
-  import Data.Vector (Vector3(..))
+  import Data.ACVector (Vector3(..))
   import PIRaTE.SpatialTypes
   import PIRaTE.Sampleable
   import Control.Monad.ST (ST)

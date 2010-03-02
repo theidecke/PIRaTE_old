@@ -1,7 +1,7 @@
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 module PIRaTE.PhaseFunction.ZCone where
-  import Data.Vector (Vector3(..),v3z)
+  import Data.ACVector (Vector3(..),v3z)
   import PIRaTE.SpatialTypes
   import PIRaTE.Sampleable
   import Control.Monad.ST (ST)

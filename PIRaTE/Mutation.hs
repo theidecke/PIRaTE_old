@@ -5,7 +5,7 @@
 {-# LANGUAGE FlexibleContexts #-}
 
 module PIRaTE.Mutation where
-  import Data.Vector (Vector3(..),(|*),vmag)
+  import Data.ACVector (Vector3(..),(|*),vmag)
   import Data.Maybe (fromMaybe,isNothing,fromJust,listToMaybe)
   import qualified Data.List as L (findIndex)
   import System.Random.MWC (Gen,uniform)

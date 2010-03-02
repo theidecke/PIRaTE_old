@@ -4,7 +4,7 @@
 {-# LANGUAGE ExistentialQuantification #-}
 
 module PIRaTE.Path where
-  import Data.Vector (Vector3(..),vmag,(|*))
+  import Data.ACVector (Vector3(..),vmag,(|*))
   import Data.Maybe (isNothing,fromJust,isJust)
   import Data.List (isPrefixOf)
   import Control.Monad (replicateM,sequence,liftM,liftM2,foldM)

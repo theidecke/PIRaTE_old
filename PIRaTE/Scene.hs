@@ -4,7 +4,7 @@
 {-# LANGUAGE ExistentialQuantification #-}
 
 module PIRaTE.Scene where
-  import Data.Vector ((|*),vmag,Vector3(..))
+  import Data.ACVector ((|*),vmag,Vector3(..))
   import Data.Monoid
   import Data.Maybe (fromMaybe,fromJust,isNothing,isJust)
   import Data.Array.Vector (singletonU)

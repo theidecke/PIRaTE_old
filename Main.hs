@@ -1,5 +1,5 @@
 module Main where
-  import Data.Vector (Vector3(..),v3x,v3y,vmag)
+  import Data.ACVector (Vector3(..),v3x,v3y,vmag)
   import qualified Data.WeighedSet as WS
   import qualified Data.List as L (intersperse,foldl',sortBy)
   import qualified Data.Map as M

@@ -10,7 +10,7 @@ module PIRaTE.RandomSample where
   import Data.Maybe (fromJust,fromMaybe)
   import Data.Array.Vector (singletonU)
   import System.Random.MWC
-  import Data.Vector (Vector3(..),(|*),vmag)
+  import Data.ACVector (Vector3(..),(|*),vmag)
   import qualified Data.WeighedSet as WS
   import PIRaTE.SpatialTypes
   import PIRaTE.UtilityFunctions (normsq,infinity)

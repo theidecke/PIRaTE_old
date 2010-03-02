@@ -4,7 +4,7 @@
 {-# LANGUAGE MultiParamTypeClasses #-}
 
 module PIRaTE.Container where
-  import Data.Vector ((|*),vdot)
+  import Data.ACVector ((|*),vdot)
   import Control.Monad.ST (ST)
   import PIRaTE.SpatialTypes
   import PIRaTE.UtilityFunctions (normsq)

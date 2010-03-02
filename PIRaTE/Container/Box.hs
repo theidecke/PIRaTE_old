@@ -2,7 +2,7 @@
 {-# LANGUAGE TypeSynonymInstances #-}
 
 module PIRaTE.Container.Box where
-  import Data.Vector (Vector3(..))
+  import Data.ACVector (Vector3(..))
   import System.Random.MWC (uniform)
   import PIRaTE.SpatialTypes
   import PIRaTE.Confineable

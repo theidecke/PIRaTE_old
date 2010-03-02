@@ -1,5 +1,5 @@
 module PIRaTE.SpatialTypes where
-  import Data.Vector
+  import Data.ACVector
   import PIRaTE.UtilityFunctions (normalize)
   
   -- some basic aliases and helper data types
