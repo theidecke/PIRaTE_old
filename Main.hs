@@ -95,10 +95,10 @@ module Main where
       scatteringmaterial = toCustomInteractingMaterial Empty (Inhomogenous sigmafun) scatteringphasefunction
       sigmafun = simpleDisc sigma 0.1 1.0 0.25
       simpleDisc m eps so a = rho where
-        rho p = if s < 0.01 then 0 else c / ((exp (0.5*(z/(eps*s))^2))*(a^2+s^2)) where {z=v3y p; s=sqrt ((v3x p)^2+(v3z p)^2)}
+        rho p = if s<0.01 || s>1 then 0 else c * (exp (-0.5*(z/(eps*s))^2)) / (a^2+s^2) where {z=v3y p; s=sqrt ((v3x p)^2+(v3z p)^2)}
         c = m / ((2*pi)**1.5 * eps * (so - a*(atan (so/a))))
       scatteringentity = entityFromContainerAndMaterials scatteringcontainer [scatteringmaterial]
-      sensorcontainer = Container $ fromCorners (Vector3 (-1) (-1) (-4.01)) (Vector3 1 1 (-3.99))
+      sensorcontainer = Container $ fromCorners (Vector3 (-1) (-1) (-1.02)) (Vector3 1 1 (-1.01))
       sensormaterial = toHomogenousSensingMaterial 1.0 sensationphasefunction
       sensorangle = 1 * arcmin
       sensorentity = entityFromContainerAndMaterials sensorcontainer [sensormaterial]
@@ -204,10 +204,10 @@ module Main where
         --scene = standardScene sigma
         scene = inhomScene sigma
         --scene = testScene
-        sessionsize = min 20000 n --n
+        sessionsize = min 1000 n --n
         sessioncount = n `div` sessionsize
         initmutmem = M.empty
-        startSampleSession size seed = mltAction scene mutations4 initmutmem extractor seed size (getChunksize size)
+        startSampleSession size seed = mltAction scene mutations1b initmutmem extractor seed size (getChunksize size)
         samplesessions = map (startSampleSession sessionsize) [1..sessioncount]
         samples = concat (map fst samplesessions `using` parList rdeepseq)
         mutmems = map snd samplesessions

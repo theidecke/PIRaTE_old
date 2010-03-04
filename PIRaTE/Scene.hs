@@ -2,6 +2,7 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE ExistentialQuantification #-}
+{-# LANGUAGE BangPatterns #-}
 
 module PIRaTE.Scene where
   import Data.ACVector ((|*),vmag,Vector3(..))
@@ -298,7 +299,7 @@ module PIRaTE.Scene where
     x0 = a + 0.5*(min maxstep (b-a))
 
   simpleGaussStepper maxstep f (a,b) ygoal = stepper f b ygoal h0 (a, 0) where
-    stepper f xmax ymax h ics@(x,y)
+    stepper f xmax ymax h ics@(!x,!y)
       | x + xtol >= xmax = MaxDistAtDepth y
       | y        >= ymax = MaxDepthAtDistance x
       | otherwise = stepper f xmax ymax h nextics
@@ -308,7 +309,7 @@ module PIRaTE.Scene where
     intervallength = b - a
     xtol = 1e-12
 
-  gaussStep f h (x,y) = (x+h,y+dy) where
+  gaussStep f h (!x,!y) = (x+h,y+dy) where
     dy = (h*) . sum $ zipWith (*) gaussweights samples
     samples = map (f . (\t->x+h*t)) gausspositions
     (gausspositions,gaussweights) = gauss2  

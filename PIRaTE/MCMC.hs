@@ -23,7 +23,7 @@ module PIRaTE.MCMC where
   
   metropolisStep :: Scene -> MutationList -> StepInfo -> Gen s -> ST s StepInfo
   metropolisStep scene mutations (old@(oldstate,oldingredients),mutmem) g = do
-    let mutations' = (getEmpiricalBidirPathSub mutmem, 1.0):mutations
+    let mutations' = {--(getEmpiricalBidirPathSub mutmem, 1.0):--}mutations
     mutation <- randomWeightedChoice mutations' g
     (maybenewstate,mfeedback) <- mutateWith mutation scene oldstate g
     let n = pathNodeCount . mltStatePath $ oldstate
@@ -46,10 +46,11 @@ module PIRaTE.MCMC where
                           else return (old, mutmem'accprob)
   
   updateMutationMemory :: (Maybe (MutationFeedback,Double,Int)) -> MutationMemory -> MutationMemory
-  updateMutationMemory Nothing mutmem = mutmem
-  updateMutationMemory (Just (SampledRIJS rijs,accprob,n)) mutmem = M.alter updateTree n mutmem where
-    updateTree  Nothing = Just $ singleton accprob rijs
-    updateTree (Just t) = Just $ insert accprob rijs t
+  updateMutationMemory _ mutmem = mutmem
+  --updateMutationMemory Nothing mutmem = mutmem
+  --updateMutationMemory (Just (SampledRIJS rijs,accprob,n)) mutmem = M.alter updateTree n mutmem where
+  --  updateTree  Nothing = Just $ singleton accprob rijs
+  --  updateTree (Just t) = Just $ insert accprob rijs t
 
   getEmpiricalBidirPathSub :: MutationMemory -> Mutation
   getEmpiricalBidirPathSub mutmem = Mutation . BidirPathSub $

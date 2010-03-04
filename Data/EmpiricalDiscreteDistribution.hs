@@ -11,7 +11,7 @@ module Data.EmpiricalDiscreteDistribution (
   import PIRaTE.Sampleable
   
   data Tree a = Empty
-              | Branch (Tree a) (Tree a) !a !Double !Integer !Double
+              | Branch !(Tree a) !(Tree a) !a !Double !Integer !Double
 
   instance (Show a) => Show (Tree a) where
     show Empty = ""
