@@ -668,7 +668,8 @@ module PIRaTE.Scene where
       u1 <- uniform g
       let depth = negate $ log (u1::Double)
           proberesult = probePropertyOfEntitiesWithRay materialproperty entities ray infinity depth
-      return (getProbeResultDist proberesult)
+          distance = getProbeResultDist proberesult
+      return distance
 
     sampleProbabilityOf (UniformAttenuationDistanceSampleable (entities,
                                                               materialproperty,
@@ -718,7 +719,9 @@ module PIRaTE.Scene where
       | otherwise = do u1 <- uniform g
                        let randomdepth = totaldepth * (u1::Double)
                            proberesult = probeMedia (infinity, randomdepth)
-                       return (getProbeResultDist proberesult)
+                           distance = getProbeResultDist proberesult
+                           mindist = 1e-14 -- avoids 0div-errors because of identical points
+                       return $ (max mindist) `fmap` distance
       where totaldepth = fromJust $ getProbeResultDepth totaldepthproberesult
             totaldepthproberesult = probeMedia (infinity, infinity)
             probeMedia = probePropertyOfEntitiesWithRayClosure materialproperty entities ray
